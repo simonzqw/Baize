@@ -167,6 +167,8 @@ def get_args():
     parser.add_argument('--atac_key', type=str, default=None)
     parser.add_argument('--atac_bank_path', type=str, default=None)
     parser.add_argument('--background_key', type=str, default='cell_context')
+    parser.add_argument('--no_cell_line', action='store_true', help='Disable discrete cell-line dependency; use context key for control pooling.')
+    parser.add_argument('--context_key', type=str, default='cell_context', help='Biological context key used for control pooling.')
     parser.add_argument('--control_match_mode', type=str, default='random', choices=['random', 'atac_knn'])
     parser.add_argument('--control_match_k', type=int, default=32)
     parser.add_argument('--control_match_scope', type=str, default='global', choices=['global', 'cell_line'])
@@ -344,7 +346,7 @@ def train():
         task_mode=args.task_mode,
         atac_key=args.atac_key,
         atac_bank_path=args.atac_bank_path,
-        background_key=args.background_key,
+        background_key=(args.context_key if args.no_cell_line else args.background_key),
     )
     n_genes, n_perts, _ = processor.load_data()
     train_loader, val_loader, test_loader = processor.prepare_loaders(
@@ -352,7 +354,7 @@ def train():
         rna_noise=0.0,
         atac_key=args.atac_key,
         atac_bank_path=args.atac_bank_path,
-        background_key=args.background_key,
+        background_key=(args.context_key if args.no_cell_line else args.background_key),
         control_match_mode=args.control_match_mode,
         control_match_k=args.control_match_k,
         control_match_scope=args.control_match_scope,

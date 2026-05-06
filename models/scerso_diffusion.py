@@ -141,9 +141,10 @@ class PerturbationDiffusionPredictor(nn.Module):
     Diffusion perturbation predictor with Squidiff-style latent injection.
 
     Core flow:
-    1) encode semantic latent z_sem from control + perturb + cell line + optional dose/ATAC/drug
+    1) encode semantic latent z_sem from control RNA + perturbation + optional ATAC/drug/dose
     2) condition diffusion model on [rna_control, z_sem]
     3) support single-gene prediction and latent arithmetic for combinatorial prediction
+    No discrete cell-line embedding is used in the diffusion mainline.
     """
     def __init__(
         self,

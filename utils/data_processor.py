@@ -70,8 +70,8 @@ class DataProcessor:
             self.adata.obs['perturbation'] = self.adata.obs['product_name'].astype(str)
             self.adata.obs.loc[self.adata.obs['perturbation'].isin(['Vehicle', 'control']), 'perturbation'] = 'control'
 
-        if 'cell_type' in self.adata.obs and 'cell_line' not in self.adata.obs:
-            self.adata.obs['cell_line'] = self.adata.obs['cell_type']
+        # no-cell-line cross-species mode:
+        # Do not auto-create obs['cell_line'] from obs['cell_type'].
 
         if 'condition' in self.adata.obs and 'perturbation' not in self.adata.obs:
             print(">>> 检测到 Adamson 格式，正在适配列名...")
@@ -91,6 +91,8 @@ class DataProcessor:
             self.adata.obs['smiles'] = self.adata.obs['SMILES']
 
         self.adata.obs['perturbation'] = self.adata.obs['perturbation'].astype(str)
+        ctrl_aliases = {"CTRL", "CTRL1", "ctrl", "Control", "vehicle", "Vehicle"}
+        self.adata.obs.loc[self.adata.obs["perturbation"].isin(ctrl_aliases), "perturbation"] = "control"
         if self.perturb_parse_mode == 'single_gene_suffix_clean':
             print(">>> perturb_parse_mode=single_gene_suffix_clean: 仅清理后缀噪声 (如 +ctrl / +control)")
             self.adata.obs['perturbation'] = self.adata.obs['perturbation'].apply(
@@ -160,11 +162,26 @@ class DataProcessor:
             self.adata.obs['source_flag'] = np.zeros(self.adata.n_obs, dtype=np.int64)
             self.n_conditions = 0
 
-        cell_line_col = 'cell_line' if 'cell_line' in self.adata.obs else 'source_batch'
-        self.cell_line_col = cell_line_col
-        self.adata.obs[cell_line_col] = self.adata.obs[cell_line_col].astype('category')
-        self.cell_line_categories = self.adata.obs[cell_line_col].cat.categories.tolist()
+        if self.background_key in self.adata.obs:
+            context_col = self.background_key
+        elif "cell_context" in self.adata.obs:
+            context_col = "cell_context"
+        elif "condition" in self.adata.obs:
+            context_col = "condition"
+        elif "species" in self.adata.obs:
+            context_col = "species"
+        elif "source_batch" in self.adata.obs:
+            context_col = "source_batch"
+        else:
+            context_col = "_global_context"
+            self.adata.obs[context_col] = "global"
+
+        self.cell_line_col = context_col  # legacy name, now used as context id
+        self.adata.obs[context_col] = self.adata.obs[context_col].astype('category')
+        self.cell_line_categories = self.adata.obs[context_col].cat.categories.tolist()
         self.cell_line_map = {name: i for i, name in enumerate(self.cell_line_categories)}
+        print(f">>> no-cell-line mode: using obs['{context_col}'] as control-pool context, not as cell-line embedding.")
+
 
 
     def _prepare_drug_features(self):
@@ -569,7 +586,7 @@ class DataProcessor:
                     'is_control': torch.tensor(is_control, dtype=torch.float32),
                     'condition_id': torch.tensor(condition_id, dtype=torch.long),
                     'source_flag': torch.tensor(source_flag, dtype=torch.long),
-                    'cell_line': torch.tensor(c_id, dtype=torch.long),
+                    'context_id': torch.tensor(c_id, dtype=torch.long),
                     'dose': dose_val,
                 }
                 if atac_val is not None:
