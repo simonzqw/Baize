@@ -183,7 +183,6 @@ class DataProcessor:
         print(f">>> no-cell-line mode: using obs['{context_col}'] as control-pool context, not as cell-line embedding.")
 
 
-
     def _prepare_drug_features(self):
         self.drug_embeddings = None
         if 'smiles' not in self.adata.obs:
