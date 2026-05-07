@@ -23,6 +23,7 @@ class DataProcessor:
         split_col: str = 'split',
         perturb_parse_mode: str = 'raw',
         task_mode: str = 'single_gene',
+        perturb_vocab_path: Optional[str] = None,
         atac_key: Optional[str] = None,
         atac_bank_path: Optional[str] = None,
         background_key: str = 'cell_context',
@@ -36,6 +37,7 @@ class DataProcessor:
         if task_mode not in {'single_gene', 'translation'}:
             raise ValueError("task_mode must be 'single_gene' or 'translation'")
         self.task_mode = task_mode
+        self.perturb_vocab_path = perturb_vocab_path
         self.atac_key = atac_key
         self.atac_bank_path = atac_bank_path
         self.background_key = background_key
@@ -125,6 +127,15 @@ class DataProcessor:
             name = str(name)
             if name != 'control':
                 gene_set.add(name)
+        if self.perturb_vocab_path is not None:
+            if not os.path.exists(self.perturb_vocab_path):
+                raise FileNotFoundError(f"perturb vocab file not found: {self.perturb_vocab_path}")
+            with open(self.perturb_vocab_path, 'r', encoding='utf-8') as f:
+                for ln in f:
+                    g = ln.strip()
+                    if not g or g == 'control':
+                        continue
+                    gene_set.add(g)
         self.perturb_gene_vocab = sorted(gene_set)
         self.perturb_gene_to_idx = {g: i for i, g in enumerate(self.perturb_gene_vocab)}
         self.idx_to_perturb_gene = {i: g for g, i in self.perturb_gene_to_idx.items()}

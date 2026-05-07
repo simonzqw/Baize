@@ -17,6 +17,11 @@ def parse_args():
     p.add_argument("--save_dir", type=str, required=True)
     p.add_argument("--pretrained_emb", type=str, default=None)
     p.add_argument("--split_strategy", type=str, default="perturbation", choices=["random", "perturbation"])
+    p.add_argument("--split_col", type=str, default="split")
+    p.add_argument("--perturb_parse_mode", type=str, default="raw", choices=["raw", "single_gene_suffix_clean", "double_gene_parse"])
+    p.add_argument("--task_mode", type=str, default="single_gene", choices=["single_gene", "translation"])
+    p.add_argument("--context_key", type=str, default="cell_context")
+    p.add_argument("--perturb_vocab_path", type=str, default=None)
     p.add_argument("--test_size", type=float, default=0.1)
     p.add_argument("--val_size", type=float, default=0.1)
     p.add_argument("--batch_size", type=int, default=512)
@@ -38,10 +43,21 @@ def parse_args():
     p.add_argument("--atac_key", type=str, default=None)
     p.add_argument("--atac_bank_path", type=str, default=None)
     p.add_argument("--background_key", type=str, default="cell_context")
+    p.add_argument("--control_match_mode", type=str, default="atac_knn", choices=["random", "atac_knn"])
+    p.add_argument("--control_match_k", type=int, default=16)
+    p.add_argument("--control_match_scope", type=str, default="global", choices=["global", "cell_line"])
+    p.add_argument("--control_prototype_mode", type=str, default="topk_weighted", choices=["single", "topk_mean", "topk_weighted"])
+    p.add_argument("--lambda_topde", type=float, default=0.5)
+    p.add_argument("--lambda_delta_corr", type=float, default=0.2)
+    p.add_argument("--lambda_centroid", type=float, default=0.2)
+    p.add_argument("--mean_loss_weight", type=float, default=10.0)
+    p.add_argument("--diff_loss_weight", type=float, default=0.1)
+    p.add_argument("--scgpt_gene_emb_path", type=str, default=None)
+    p.add_argument("--gene_prior_scale", type=float, default=0.1)
     return p.parse_args()
 
 
-def run_epoch(model, loader, optimizer, scaler, device, timestep_sampler, sample_steps, guidance_scale, drug_embeddings=None, train=True):
+def run_epoch(model, loader, optimizer, scaler, device, timestep_sampler, sample_steps, guidance_scale, drug_embeddings=None, train=True, args=None):
     if train:
         model.train()
     else:
@@ -52,6 +68,18 @@ def run_epoch(model, loader, optimizer, scaler, device, timestep_sampler, sample
         ctrl = batch["rna_control"].to(device)
         target = batch["rna_target"].to(device)
         perturb = batch["perturb"].to(device)
+        perturb_gene_idx = batch.get("perturb_gene_idx")
+        is_control = batch.get("is_control")
+        condition_id = batch.get("condition_id")
+        source_flag = batch.get("source_flag")
+        if perturb_gene_idx is not None:
+            perturb_gene_idx = perturb_gene_idx.to(device)
+        if is_control is not None:
+            is_control = is_control.to(device)
+        if condition_id is not None:
+            condition_id = condition_id.to(device)
+        if source_flag is not None:
+            source_flag = source_flag.to(device)
         dose = batch["dose"].to(device) if "dose" in batch else None
         atac_feat = batch["atac_feat"].to(device) if "atac_feat" in batch else None
         drug_feat = drug_embeddings[perturb] if drug_embeddings is not None else None
@@ -71,6 +99,12 @@ def run_epoch(model, loader, optimizer, scaler, device, timestep_sampler, sample
                     drug_feat=drug_feat,
                     t=t,
                     weights=weights,
+                    perturb_gene_idx=perturb_gene_idx,
+                    is_control=is_control,
+                    condition_id=condition_id,
+                    source_flag=source_flag,
+                    mean_loss_weight=args.mean_loss_weight,
+                    diff_loss_weight=args.diff_loss_weight,
                 )
 
             if train:
@@ -88,6 +122,10 @@ def run_epoch(model, loader, optimizer, scaler, device, timestep_sampler, sample
                     drug_feat=drug_feat,
                     sample_steps=sample_steps,
                     guidance_scale=guidance_scale,
+                    perturb_gene_idx=perturb_gene_idx,
+                    is_control=is_control,
+                    condition_id=condition_id,
+                    source_flag=source_flag,
                 )
                 metric_mses.append(float(torch.mean((pred - target) ** 2).detach().item()))
 
@@ -107,9 +145,13 @@ def main():
         test_size=args.test_size,
         val_size=args.val_size,
         split_strategy=args.split_strategy,
+        split_col=args.split_col,
+        perturb_parse_mode=args.perturb_parse_mode,
+        task_mode=args.task_mode,
+        perturb_vocab_path=args.perturb_vocab_path,
         atac_key=args.atac_key,
         atac_bank_path=args.atac_bank_path,
-        background_key=args.background_key,
+        background_key=args.context_key,
     )
     n_genes, n_perts, _ = processor.load_data()
     train_loader, val_loader, _ = processor.prepare_loaders(
@@ -117,19 +159,28 @@ def main():
         rna_noise=0.0,
         atac_key=args.atac_key,
         atac_bank_path=args.atac_bank_path,
-        background_key=args.background_key,
+        background_key=args.context_key,
+        control_match_mode=args.control_match_mode,
+        control_match_k=args.control_match_k,
+        control_match_scope=args.control_match_scope,
+        control_prototype_mode=args.control_prototype_mode,
     )
 
     pretrained_weights = None
+    pretrained_gene_weights = None
     if args.pretrained_emb:
         loader = GeneEmbeddingLoader(args.pretrained_emb, processor.id_to_perturb)
         pretrained_weights = loader.load_weights()
+        if getattr(processor, "idx_to_perturb_gene", None):
+            gene_loader = GeneEmbeddingLoader(args.pretrained_emb, processor.idx_to_perturb_gene)
+            pretrained_gene_weights = gene_loader.load_weights()
 
     atac_dim = processor.atac_dim if getattr(processor, "atac_features", None) is not None else 0
     model = PerturbationDiffusionPredictor(
         n_genes=n_genes,
         n_perturbations=n_perts,
         pretrained_weights=pretrained_weights,
+        pretrained_gene_weights=pretrained_gene_weights,
         perturb_dim=args.perturb_dim,
         hidden_dims=args.hidden_dims,
         dropout=args.dropout,
@@ -141,6 +192,9 @@ def main():
         use_atac=(processor.atac_features is not None),
         atac_dim=atac_dim,
         cond_dropout=args.cond_dropout,
+        n_perturb_genes=len(getattr(processor, "perturb_gene_vocab", []) or []),
+        task_mode=args.task_mode,
+        n_conditions=getattr(processor, "n_conditions", 0),
     ).to(device)
 
     if args.timestep_sampler == "loss-second-moment":
@@ -166,6 +220,7 @@ def main():
             guidance_scale=args.guidance_scale,
             drug_embeddings=drug_embeddings,
             train=True,
+            args=args,
         )
         val_loss, val_pred_mse = run_epoch(
             model,
@@ -178,6 +233,7 @@ def main():
             guidance_scale=args.guidance_scale,
             drug_embeddings=drug_embeddings,
             train=False,
+            args=args,
         )
         print(
             f"[E{epoch:03d}/{args.epochs:03d}] "
