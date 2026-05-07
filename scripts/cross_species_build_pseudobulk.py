@@ -4,6 +4,13 @@ import numpy as np
 import scanpy as sc
 from scipy.sparse import issparse
 
+CONTROL_ALIASES = {'CTRL','CTRL1','ctrl','Control','vehicle','Vehicle'}
+
+def normalize_perturbation(arr, control_key='control'):
+    arr = np.asarray(arr, dtype=object)
+    arr = np.array([str(x) for x in arr], dtype=object)
+    arr[np.isin(arr, list(CONTROL_ALIASES | {control_key}))] = str(control_key)
+    return arr
 
 def dmean(x):
     return np.asarray(x.mean(axis=0)).ravel() if issparse(x) else np.asarray(x).mean(axis=0)
@@ -33,20 +40,22 @@ def main():
     m = (ad.obs[args.split_col].astype(str).values == args.train_split_value) & (ad.obs[args.species_col].astype(str).values == args.human_value)
     ad = ad[m]
 
-    perts = sorted(set(ad.obs[args.perturb_col].astype(str)) - {args.control_key})
+    pert_all = normalize_perturbation(ad.obs[args.perturb_col].values, args.control_key)
+    perts = sorted(set(pert_all) - {args.control_key})
     ctxs = sorted(set(ad.obs[args.context_col].astype(str)))
-    gctrl = dmean(ad[ad.obs[args.perturb_col].astype(str).values == args.control_key].X)
-    gsrc = {p: dmean(ad[ad.obs[args.perturb_col].astype(str).values == p].X) - gctrl for p in perts}
+    gctrl = dmean(ad[pert_all == args.control_key].X)
+    gsrc = {p: dmean(ad[pert_all == p].X) - gctrl for p in perts}
 
     out = {k: [] for k in ['control_mean', 'target_mean', 'true_delta', 'source_delta', 'residual_target', 'atac_mean', 'perturbation', 'context', 'gene_weight']}
     rng = np.random.default_rng(42)
     for c in ctxs:
         cad = ad[np.where(ad.obs[args.context_col].astype(str).values == c)[0]]
-        ctrl_idx = np.where(cad.obs[args.perturb_col].astype(str).values == args.control_key)[0]
+        cpert = normalize_perturbation(cad.obs[args.perturb_col].values, args.control_key)
+        ctrl_idx = np.where(cpert == args.control_key)[0]
         if len(ctrl_idx) == 0:
             continue
         for p in perts:
-            pidx = np.where(cad.obs[args.perturb_col].astype(str).values == p)[0]
+            pidx = np.where(cpert == p)[0]
             if len(pidx) == 0:
                 continue
             for _ in range(args.bootstrap_reps):
