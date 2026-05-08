@@ -18,13 +18,21 @@ def main():
     p.add_argument('--perturb_col',default='perturbation'); p.add_argument('--context_col',default='cell_context'); p.add_argument('--control_key',default='control'); p.add_argument('--species_col',default='species'); p.add_argument('--human_value',default='human'); p.add_argument('--atac_key',default='atac_feat'); p.add_argument('--contextwise',action='store_true'); p.add_argument('--aggregate_contexts',action='store_true'); p.add_argument('--alpha_json',default=None)
     args=p.parse_args(); os.makedirs(args.out_dir,exist_ok=True)
     ck=torch.load(args.ckpt,map_location='cpu'); vocab=ck['vocab']; p2i={p:i for i,p in enumerate(vocab)}
+    model_args = ck.get('model_args', {})
+
+    gene_basis_init = None
+    scgpt_gene_basis = model_args.get('scgpt_gene_basis', None)
+    if scgpt_gene_basis is not None and os.path.exists(scgpt_gene_basis):
+        gene_basis_init = np.load(scgpt_gene_basis).astype(np.float32)
+        print('loaded scGPT gene basis for inference:', scgpt_gene_basis, gene_basis_init.shape)
+    elif scgpt_gene_basis is not None:
+        print('warning: scGPT gene basis path saved in checkpoint but not found:', scgpt_gene_basis)
     comb=sc.read_h5ad(args.combined_h5ad); mouse=sc.read_h5ad(args.mouse_h5ad)
     hum=comb[comb.obs[args.species_col].astype(str).values==args.human_value]
     hp=normalize_perturbation(hum.obs[args.perturb_col].values,args.control_key)
     hctrl=dmean(hum[hp==args.control_key].X)
     src={g:dmean(hum[hp==g].X)-hctrl for g in args.perturbations if np.any(hp==g)}
-    margs=ck.get('model_args',{})
-    model=CrossSpeciesResidualPredictor(n_genes=ck.get('n_genes',mouse.n_vars), n_perturbations=len(vocab), atac_dim=ck.get('atac_dim',256), use_atac=margs.get('use_atac',args.atac_key in mouse.obsm), rank=margs.get('rank',64), hidden_dim=margs.get('hidden_dim',512), residual_scale=margs.get('residual_scale',0.01), learn_perturb_alpha=margs.get('learn_perturb_alpha',True), alpha_init=margs.get('alpha_init',-1.0), alpha_min=margs.get('alpha_min',-3.0), alpha_max=margs.get('alpha_max',0.5))
+    model=CrossSpeciesResidualPredictor(n_genes=ck.get('n_genes',mouse.n_vars), n_perturbations=len(vocab), atac_dim=ck.get('atac_dim',256), perturb_dim=model_args.get('perturb_dim',128), hidden_dim=model_args.get('hidden_dim',512), rank=model_args.get('rank',64), dropout=model_args.get('dropout',0.1), residual_scale=model_args.get('residual_scale',0.01), use_atac=model_args.get('use_atac',args.atac_key in mouse.obsm), learn_perturb_alpha=model_args.get('learn_perturb_alpha',True), alpha_init=model_args.get('alpha_init',-1.0), alpha_min=model_args.get('alpha_min',-3.0), alpha_max=model_args.get('alpha_max',0.5), gene_basis_init=gene_basis_init, freeze_gene_basis=model_args.get('freeze_gene_basis',False))
     model.load_state_dict(ck['model']); model.eval()
     alpha_map=json.load(open(args.alpha_json)) if (args.alpha_json and os.path.exists(args.alpha_json)) else {}
     mp=normalize_perturbation(mouse.obs[args.perturb_col].values,args.control_key)

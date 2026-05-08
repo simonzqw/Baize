@@ -28,6 +28,8 @@ def main():
     p.add_argument('--rank', type=int, default=64)
     p.add_argument('--hidden_dim', type=int, default=512)
     p.add_argument('--residual_scale', type=float, default=0.01)
+    p.add_argument('--scgpt_gene_basis', default=None)
+    p.add_argument('--freeze_gene_basis', action='store_true')
     p.add_argument('--learn_perturb_alpha', action='store_true')
     p.add_argument('--alpha_init', type=float, default=-1.0)
     p.add_argument('--alpha_min', type=float, default=-3.0)
@@ -73,6 +75,19 @@ def main():
     train_dl = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_dl = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
 
+
+    gene_basis_init = None
+    if args.scgpt_gene_basis is not None:
+        gene_basis_init = np.load(args.scgpt_gene_basis).astype(np.float32)
+        print('loaded scGPT gene basis:', args.scgpt_gene_basis, gene_basis_init.shape)
+        expected_shape = (args.rank, ds.tensors[0].shape[1])
+        if tuple(gene_basis_init.shape) != expected_shape:
+            raise ValueError(
+                f'scGPT gene basis shape {gene_basis_init.shape} does not match '
+                f'expected shape {expected_shape}. '
+                f'Please make sure --rank matches the basis rank and gene order matches the h5ad.'
+            )
+
     model = CrossSpeciesResidualPredictor(
         n_genes=ds.tensors[0].shape[1],
         n_perturbations=len(vocab),
@@ -85,6 +100,8 @@ def main():
         alpha_init=args.alpha_init,
         alpha_min=args.alpha_min,
         alpha_max=args.alpha_max,
+        gene_basis_init=gene_basis_init,
+        freeze_gene_basis=args.freeze_gene_basis,
     ).to(device)
 
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -131,6 +148,8 @@ def main():
                     'alpha_max': args.alpha_max,
                     'alpha_init': args.alpha_init,
                     'learn_perturb_alpha': args.learn_perturb_alpha,
+                    'scgpt_gene_basis': args.scgpt_gene_basis,
+                    'freeze_gene_basis': args.freeze_gene_basis,
                 },
                 'train_args': vars(args),
                 'best_loss': best,

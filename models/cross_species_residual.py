@@ -20,12 +20,15 @@ class CrossSpeciesResidualPredictor(nn.Module):
         alpha_init: float = -1.0,
         alpha_min: float = -3.0,
         alpha_max: float = 0.5,
+        gene_basis_init=None,
+        freeze_gene_basis: bool = False,
     ) -> None:
         super().__init__()
         self.use_atac = use_atac
         self.residual_scale = residual_scale
         self.alpha_min = alpha_min
         self.alpha_max = alpha_max
+        self.freeze_gene_basis = freeze_gene_basis
 
         self.control_encoder = self._encoder(n_genes, hidden_dim, perturb_dim, dropout)
         self.source_delta_encoder = self._encoder(n_genes, hidden_dim, perturb_dim, dropout)
@@ -43,7 +46,24 @@ class CrossSpeciesResidualPredictor(nn.Module):
             nn.SiLU(),
         )
         self.coeff_head = nn.Linear(hidden_dim, rank)
-        self.gene_basis = nn.Parameter(torch.randn(rank, n_genes) * 0.02)
+
+        if gene_basis_init is not None:
+            if tuple(gene_basis_init.shape) != (rank, n_genes):
+                raise ValueError(
+                    f"gene_basis_init shape {tuple(gene_basis_init.shape)} does not match "
+                    f"(rank, n_genes)=({rank}, {n_genes})"
+                )
+            if not torch.is_tensor(gene_basis_init):
+                gene_basis_init = torch.tensor(gene_basis_init, dtype=torch.float32)
+            else:
+                gene_basis_init = gene_basis_init.float()
+            self.gene_basis = nn.Parameter(gene_basis_init.clone())
+        else:
+            self.gene_basis = nn.Parameter(torch.randn(rank, n_genes) * 0.02)
+
+        if freeze_gene_basis:
+            self.gene_basis.requires_grad_(False)
+
         self.gate_head = nn.Sequential(nn.Linear(hidden_dim, n_genes), nn.Sigmoid())
         self.alpha_emb = nn.Embedding(n_perturbations, 1) if learn_perturb_alpha else None
         self.register_buffer("fixed_alpha", torch.tensor(float(alpha_init)))
