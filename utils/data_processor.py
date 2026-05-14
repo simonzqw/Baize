@@ -27,6 +27,7 @@ class DataProcessor:
         atac_key: Optional[str] = None,
         atac_bank_path: Optional[str] = None,
         background_key: str = 'cell_context',
+        perturb_col: str = 'perturbation', smiles_col: str = 'smiles', dose_col: str = 'dose', control_col: str = 'is_control', context_col: str = 'cell_context', target_col: str = 'target', pathway_col: str = 'pathway', condition_key_col: str = 'condition_key', drug_condition_mode: str = 'structure',
     ):
         self.h5ad_path = h5ad_path
         self.test_size = test_size
@@ -34,13 +35,14 @@ class DataProcessor:
         self.split_strategy = split_strategy
         self.split_col = split_col
         self.perturb_parse_mode = perturb_parse_mode
-        if task_mode not in {'single_gene', 'translation'}:
-            raise ValueError("task_mode must be 'single_gene' or 'translation'")
+        if task_mode not in {'single_gene', 'translation', 'drug'}:
+            raise ValueError("task_mode must be 'single_gene', 'translation' or 'drug'")
         self.task_mode = task_mode
         self.perturb_vocab_path = perturb_vocab_path
         self.atac_key = atac_key
         self.atac_bank_path = atac_bank_path
         self.background_key = background_key
+        self.perturb_col=perturb_col; self.smiles_col=smiles_col; self.dose_col=dose_col; self.control_col=control_col; self.context_col=context_col; self.target_col=target_col; self.pathway_col=pathway_col; self.condition_key_col=condition_key_col; self.drug_condition_mode=drug_condition_mode
 
         self.adata = None
         self.perturb_map = None
@@ -93,7 +95,7 @@ class DataProcessor:
             self.adata.obs['smiles'] = self.adata.obs['SMILES']
 
         self.adata.obs['perturbation'] = self.adata.obs['perturbation'].astype(str)
-        ctrl_aliases = {"CTRL", "CTRL1", "ctrl", "Control", "vehicle", "Vehicle"}
+        ctrl_aliases = {"DMSO","dmso","Vehicle","vehicle","control","Control","CTRL","ctrl"}
         self.adata.obs.loc[self.adata.obs["perturbation"].isin(ctrl_aliases), "perturbation"] = "control"
         if self.perturb_parse_mode == 'single_gene_suffix_clean':
             print(">>> perturb_parse_mode=single_gene_suffix_clean: 仅清理后缀噪声 (如 +ctrl / +control)")
@@ -118,6 +120,13 @@ class DataProcessor:
         else:
             print(">>> perturb_parse_mode=raw: 保留原始 perturbation 字符串，不做下划线截断清洗。")
 
+        if self.task_mode == 'drug':
+            self.adata.obs['perturbation']=self.adata.obs[self.perturb_col].astype(str)
+            if self.smiles_col in self.adata.obs: self.adata.obs['smiles']=self.adata.obs[self.smiles_col].astype(str)
+            if self.dose_col in self.adata.obs: self.adata.obs['dose']=pd.to_numeric(self.adata.obs[self.dose_col],errors='coerce').fillna(0).astype(np.float32)
+            if self.control_col in self.adata.obs: self.adata.obs['is_control']=pd.to_numeric(self.adata.obs[self.control_col],errors='coerce').fillna(0).astype(np.int64)
+            if self.context_col in self.adata.obs: self.adata.obs['cell_context']=self.adata.obs[self.context_col].astype(str)
+            self.adata.obs.loc[self.adata.obs['is_control']==1,'perturbation']='control'
         self.adata.obs['perturbation'] = self.adata.obs['perturbation'].astype('category')
         self.perturb_categories = self.adata.obs['perturbation'].cat.categories.tolist()
         self.perturb_map = {name: i for i, name in enumerate(self.perturb_categories)}
@@ -148,7 +157,10 @@ class DataProcessor:
                 perturb_gene_idx.append(pad_idx)
                 is_control.append(1)
             else:
-                perturb_gene_idx.append(self.perturb_gene_to_idx[name])
+                if self.task_mode=='drug':
+                    perturb_gene_idx.append(pad_idx)
+                else:
+                    perturb_gene_idx.append(self.perturb_gene_to_idx[name])
                 is_control.append(0)
         self.adata.obs['perturb_gene_idx'] = np.array(perturb_gene_idx, dtype=np.int64)
         self.adata.obs['is_control'] = np.array(is_control, dtype=np.int64)
@@ -219,6 +231,7 @@ class DataProcessor:
             drug_feats.append(np.asarray(fp, dtype=np.float32))
 
         self.drug_embeddings = torch.tensor(np.stack(drug_feats, axis=0), dtype=torch.float32)
+        self.drug_dim = int(self.drug_embeddings.shape[1])
         print(f">>> 药物特征提取完成，维度: {self.drug_embeddings.shape}")
 
     def _prepare_dose_features(self):
@@ -228,6 +241,8 @@ class DataProcessor:
 
         print(">>> 检测到剂量信息，正在处理 Dose 特征...")
         doses = self.adata.obs['dose'].values.astype(np.float32)
+        if self.task_mode=='drug' and 'is_control' in self.adata.obs:
+            doses[self.adata.obs['is_control'].values.astype(np.int64)==1]=0.0
         doses = np.log1p(doses)
         d_min, d_max = doses.min(), doses.max()
         if d_max > d_min:

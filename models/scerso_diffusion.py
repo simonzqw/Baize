@@ -167,6 +167,7 @@ class PerturbationDiffusionPredictor(nn.Module):
         target_mode: str = "target",
         n_perturb_genes: int = 0,
         task_mode: str = "single_gene",
+        drug_condition_mode: str = "structure",
         n_conditions: int = 0,
     ):
         super().__init__()
@@ -179,9 +180,10 @@ class PerturbationDiffusionPredictor(nn.Module):
         self.atac_dim = atac_dim
         self.cond_dropout = cond_dropout
         self.n_perturb_genes = int(n_perturb_genes) if n_perturb_genes is not None else 0
-        if task_mode not in {"single_gene", "translation"}:
-            raise ValueError("task_mode must be 'single_gene' or 'translation'")
+        if task_mode not in {"single_gene", "translation", "drug"}:
+            raise ValueError("task_mode must be 'single_gene', 'translation' or 'drug'")
         self.task_mode = task_mode
+        self.drug_condition_mode = drug_condition_mode
         self.n_conditions = int(n_conditions) if n_conditions is not None else 0
         if target_mode not in {"target", "delta"}:
             raise ValueError("target_mode 必须是 'target' 或 'delta'")
@@ -454,7 +456,19 @@ class PerturbationDiffusionPredictor(nn.Module):
             drug_token = self.drug_projection(drug_feat)
         else:
             drug_token = torch.zeros_like(base_feat)
-        z_pert = self.perturbation_encoder(torch.cat([base_feat, dose_feat, drug_token], dim=1))
+        if self.task_mode == 'drug':
+            if self.drug_condition_mode == 'structure':
+                base = torch.zeros_like(base_feat)
+            elif self.drug_condition_mode == 'id':
+                drug_token = torch.zeros_like(base_feat)
+                base = base_feat
+            elif self.drug_condition_mode == 'none':
+                base = torch.zeros_like(base_feat); drug_token = torch.zeros_like(base_feat); dose_feat = torch.zeros_like(base_feat)
+            else:
+                base = base_feat
+            z_pert = self.perturbation_encoder(torch.cat([base, dose_feat, drug_token], dim=1))
+        else:
+            z_pert = self.perturbation_encoder(torch.cat([base_feat, dose_feat, drug_token], dim=1))
         return z_pert
 
     def compose_effect(self, z_bg: torch.Tensor, z_pert: torch.Tensor) -> torch.Tensor:

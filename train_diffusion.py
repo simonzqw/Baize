@@ -124,7 +124,7 @@ def get_args():
     parser.add_argument('--split_strategy', type=str, default='perturbation', choices=['random', 'perturbation', 'custom'])
     parser.add_argument('--split_col', type=str, default='split')
     parser.add_argument('--perturb_parse_mode', type=str, default='raw', choices=['raw', 'single_gene_suffix_clean', 'double_gene_parse'])
-    parser.add_argument('--task_mode', type=str, default='single_gene', choices=['single_gene', 'translation'])
+    parser.add_argument('--task_mode', type=str, default='single_gene', choices=['single_gene', 'translation', 'drug'])
     parser.add_argument('--test_size', type=float, default=0.1)
     parser.add_argument('--val_size', type=float, default=0.1)
 
@@ -166,6 +166,14 @@ def get_args():
 
     parser.add_argument('--atac_key', type=str, default=None)
     parser.add_argument('--atac_bank_path', type=str, default=None)
+    parser.add_argument('--perturb_col', type=str, default='perturbation')
+    parser.add_argument('--smiles_col', type=str, default='smiles')
+    parser.add_argument('--dose_col', type=str, default='dose')
+    parser.add_argument('--control_col', type=str, default='is_control')
+    parser.add_argument('--context_col', type=str, default='cell_context')
+    parser.add_argument('--condition_key_col', type=str, default='condition_key')
+    parser.add_argument('--drug_condition_mode', type=str, default='structure', choices=['structure','id','structure_id','none'])
+    parser.add_argument('--save_eval_every', type=int, default=0)
     parser.add_argument('--background_key', type=str, default='cell_context')
     parser.add_argument('--no_cell_line', action='store_true', help='Disable discrete cell-line dependency; use context key for control pooling.')
     parser.add_argument('--context_key', type=str, default='cell_context', help='Biological context key used for control pooling.')
