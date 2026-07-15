@@ -29,10 +29,10 @@ def get_args():
 def visualize():
     args = get_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f">>> 当前请求的可视化基因: {args.heatmap_gene}")
+    print(f">>> 当前请求的可视化genes: {args.heatmap_gene}")
     
     # 1. Load Checkpoint
-    print(f">>> 正在加载模型: {args.model_path}")
+    print(f">>> Loading model: {args.model_path}")
     checkpoint = torch.load(args.model_path, map_location=device, weights_only=False)
     model_args = checkpoint['args']
     state_dict = checkpoint['model_state_dict']
@@ -41,7 +41,7 @@ def visualize():
         state_dict = checkpoint['ema_state_dict']
     
     # 2. Load data
-    print(f">>> 正在加载数据: {args.data_path}")
+    print(f">>> Loading data: {args.data_path}")
     processor = DataProcessor(
         args.data_path, 
         test_size=args.test_size, 
@@ -188,7 +188,7 @@ def visualize():
 
     # --- New: Print detailed test indicator table ---
     print("\n" + "="*50)
-    print(f"正在为 {len(df_pert)} 个测试扰动计算 AUC...")
+    print(f"Computing AUC for {len(df_pert)} 个测试Perturbation计算 AUC...")
     print("---AUC calculation completed ---")
     
     # Format the output table (similar to the user-supplied format)
@@ -209,14 +209,14 @@ def visualize():
     test_genes_path = os.path.join(os.path.dirname(args.save_path) or ".", "test_genes_list.txt")
     with open(test_genes_path, "w") as f:
         f.write("\n".join(test_genes_list))
-    print(f">>> 已将 {len(test_genes_list)} 个测试集基因保存至: {test_genes_path}")
+    print(f">>> Saved {len(test_genes_list)} 个test setgenes保存至: {test_genes_path}")
 
     # If the specified gene is not found, the gene with the highest AUC in the test set is automatically selected as a backup.
     if bar_plot_data is None:
-        print(f"!!! 警告: 基因 {args.heatmap_gene} 不在测试集中。")
+        print(f"!!! 警告: genes {args.heatmap_gene} 不在test set中.")
         best_gene_row = df_pert.sort_values('auc', ascending=False).iloc[0]
         best_gene_name = best_gene_row['perturb']
-        print(f">>> 自动选择测试集表现最佳基因进行展示: {best_gene_name}")
+        print(f">>> 自动选择test set表现最佳genes进行展示: {best_gene_name}")
         
         data = results_by_pert[best_gene_name]
         avg_p, avg_t, avg_c = np.mean(data['p'], axis=0), np.mean(data['t'], axis=0), np.mean(data['c'], axis=0)
@@ -370,7 +370,7 @@ def visualize():
 
     plt.tight_layout()
     plt.savefig(args.save_path, dpi=200)
-    print(f">>> 最终专业评估报告已生成: {args.save_path}")
+    print(f">>> Final evaluation report generated: {args.save_path}")
 
 if __name__ == "__main__":
     visualize()

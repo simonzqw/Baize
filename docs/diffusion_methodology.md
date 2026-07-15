@@ -1,116 +1,125 @@
-# Current diffusion model methodology (scERso diffusion)
+# Current scERso Diffusion Methodology
 
-## 1) Task and condition modeling
-The goal is to learn the conditional distribution:
+## 1. Task definition and conditional modeling
+
+The model learns the conditional distribution:
 
 \[
 p(\mathbf{x}_{\text{pert}}\mid \mathbf{x}_{\text{ctrl}},\ \text{perturb},\ \text{cell\_line},\ \text{dose},\ \text{ATAC},\ \text{drug})
 \]
 
-Among them, \(\mathbf{x}_{\text{ctrl}}\) is the control RNA expression, and \(\mathbf{x}_{\text{pert}}\) is the expression after perturbation.
+Here, \(\mathbf{x}_{\text{ctrl}}\) is the control RNA-expression profile and \(\mathbf{x}_{\text{pert}}\) is the post-perturbation expression profile.
 
-## 2) Semantic latent variables and context
-The model first encodes the multimodal conditions into semantic latent variables \(\mathbf{z}_{sem}\):
+## 2. Semantic latent variables and context
 
-- RNA control projection;
-- perturbation embedding (can be scaled according to dose);
-- cell-line embedding；
+The model first encodes multimodal conditions into a semantic latent variable \(\mathbf{z}_{sem}\):
+
+- projection of the control RNA profile;
+- perturbation embedding, optionally scaled by dose;
+- cell-line embedding;
 - dose projection;
-- Optional ATAC/drug feature projection;
-- Through multi-head self-attention fusion, and then doing residual MLP and LayerNorm to get \(\mathbf{z}_{sem}\).
-- Introduce joint semantic encoder (RNA/perturb/cell-line/dose concatenated MLP) in parallel and perform gated fusion with the attention path to improve the stability of single-perturbation semantic representation.
+- optional ATAC and drug-feature projections;
+- multi-head self-attention followed by a residual MLP and LayerNorm to produce \(\mathbf{z}_{sem}\);
+- a parallel joint semantic encoder that concatenates RNA, perturbation, cell-line, and dose features, processes them with an MLP, and combines them with the attention pathway through a gate to stabilize single-perturbation representations.
 
-Then construct the diffusion condition vector:
+The diffusion condition vector is then constructed as:
 
 \[
 \mathbf{c}=\left[\mathbf{x}_{\text{ctrl}};\mathbf{z}_{sem}\right]
 \]
 
-It also supports conditional dropout (randomly setting \(\mathbf{z}_{sem}\) to zero during training) for classifier-free guidance.
+Conditional dropout is supported during training by randomly setting \(\mathbf{z}_{sem}\) to zero, enabling classifier-free guidance.
 
-## 3) Forward diffusion (noise addition)
-Use Gaussian diffusion forward process:
+## 3. Forward diffusion process
+
+A Gaussian forward diffusion process is used:
 
 \[
 q(\mathbf{x}_t\mid \mathbf{x}_0)=\mathcal{N}\left(\sqrt{\bar\alpha_t}\mathbf{x}_0,(1-\bar\alpha_t)\mathbf{I}\right)
 \]
 
-Implemented as:
+It is implemented as:
 
 \[
 \mathbf{x}_t=\sqrt{\bar\alpha_t}\mathbf{x}_0+\sqrt{1-\bar\alpha_t}\,\boldsymbol\epsilon,\quad \boldsymbol\epsilon\sim\mathcal{N}(0,\mathbf{I})
 \]
 
-Noise scheduling can be linear or cosine (default cosine).
+The noise schedule can be linear or cosine, with cosine used by default.
 
-## 4) Reverse denoising network
-The denoiser is a Squidiff style MLP:
+## 4. Reverse denoising network
 
-- Input \(\mathbf{x}_t\) and condition \(\mathbf{c}\);
-- Time step \(t\) first performs sinusoidal position encoding and MLP;
-- Inject time embedding and \(\mathbf{z}_{sem}\) into each residual block;
-- Output an expression vector with the same dimensions as the input.
+The denoiser is a Squidiff-style MLP:
 
-The current objective configuration is `pred_x0`, that is, the network directly predicts \(\hat{\mathbf{x}}_0\).
+- it receives \(\mathbf{x}_t\) and the condition \(\mathbf{c}\);
+- timestep \(t\) is represented using sinusoidal positional encoding followed by an MLP;
+- the time embedding and \(\mathbf{z}_{sem}\) are injected into every residual block;
+- the output has the same dimensionality as the expression input.
 
-## 5) Training goals
-Each random sampling time step \(t\), minimizing:
+The current objective is `pred_x0`, meaning that the network directly predicts \(\hat{\mathbf{x}}_0\).
+
+## 5. Training objective
+
+At every iteration, a timestep \(t\) is sampled and the following objective is minimized:
 
 \[
 \mathcal{L}=\mathbb{E}_{t,\mathbf{x}_0,\boldsymbol\epsilon}\left[\lVert f_\theta(\mathbf{x}_t,t,\mathbf{c})-\mathbf{x}_0\rVert_2^2\right]
 \]
 
-In the code, the mean (dim=1) is calculated based on the sample and then averaged in batches; the sample weight is optional (with the time step resampler).
+The implementation first averages the loss over features for each sample and then averages over the batch. Optional sample weights can be supplied by the timestep resampler.
 
-## 6) Sampling and inference
+## 6. Sampling and inference
+
 ### DDPM sampling
-Iterate by \(t=T-1\to0\):
 
-1. Use the model to obtain \(\hat{\mathbf{x}}_0\) (or predict the noise first and then convert);
-2. Through posterior mean variance
-\(q(\mathbf{x}_{t-1}\mid\mathbf{x}_t,\hat{\mathbf{x}}_0)\)
-Sample \(\mathbf{x}_{t-1}\).
+The model iterates from \(t=T-1\) to \(0\):
 
-### DDIM fast sampling
-If `sample_steps < timesteps`, use DDIM subsequence update, support \(\eta\) to control randomness.
+1. predict \(\hat{\mathbf{x}}_0\), or predict noise and convert it to \(\hat{\mathbf{x}}_0\);
+2. sample \(\mathbf{x}_{t-1}\) from the posterior mean and variance of \(q(\mathbf{x}_{t-1}\mid\mathbf{x}_t,\hat{\mathbf{x}}_0)\).
 
-### Latent Interpolation
-Supports linear interpolation trajectories between two semantic latents:
+### Fast DDIM sampling
+
+When `sample_steps < timesteps`, a DDIM subsequence is used. The parameter \(\eta\) controls stochasticity.
+
+### Latent interpolation
+
+A linear interpolation trajectory can be constructed between two semantic latent vectors:
+
 \[
-z(\alpha)=(1-\alpha)z_A+\alpha z_B,\ \alpha\in[0,1]
+z(\alpha)=(1-\alpha)z_A+\alpha z_B,\quad \alpha\in[0,1]
 \]
-Can be used for dose/state continuous transition analysis (`predict_diffusion.py --interpolate_to --interp_steps`).
 
-### Classifier-Free Guidance
-Compute conditional/unconditional predictions simultaneously and linearly combine:
+This can be used to analyze continuous dose or state transitions with `predict_diffusion.py --interpolate_to --interp_steps`.
+
+### Classifier-free guidance
+
+Conditional and unconditional predictions are combined as:
 
 \[
 \hat{y}=\hat{y}_{uncond}+s(\hat{y}_{cond}-\hat{y}_{uncond})
 \]
 
-Among them \(s=\) `guidance_scale`.
+where \(s\) is `guidance_scale`.
 
-## 7) Mathematical meaning (intuitive explanation)
-1. **Convert high-dimensional gene expression generation into a "step-by-step refinement" problem**:
-   Starting from isotropic Gaussian noise, it is gradually shrunk to an expression vector that conforms to the conditional distribution.
-2. **The conditional latent variable \(\mathbf{z}_{sem}\) is the "perturbation semantic coordinate"**:
-   Unifying perturb/cell-line/dose/ATAC/drug into the same latent space is equivalent to applying a "field" to the inverse diffusion trajectory.
-3. **`pred_x0` target bias directly returns to the biological signal subject**:
-   Directly supervised \(\mathbf{x}_0\) fits expression amplitudes more directly than pure noise predictions (but relies on key normalization for stability and calibration).
-4. **CFG corresponds to conditional likelihood gradient amplification**:
-   Enhance conditional term contributions during sampling to improve conditional consistency (usually at the expense of some diversity).
-5. **Time step resampling = importance sampling idea**:
-   loss-second-moment pays more attention to high-loss time steps, approximately reduces gradient variance and improves sample efficiency.
+## 7. Mathematical interpretation
 
-## 8) Relationship with combined disturbance
-This implementation supports encoding a single perturbation latent first, and then sampling after combination:
+1. **High-dimensional expression generation is converted into progressive refinement.** The reverse process starts from isotropic Gaussian noise and gradually contracts toward an expression vector consistent with the conditional distribution.
+2. **The conditional latent variable \(\mathbf{z}_{sem}\) acts as a perturbation-semantic coordinate.** Perturbation, cell-line, dose, ATAC, and drug information are represented in one latent space and shape the reverse diffusion trajectory.
+3. **The `pred_x0` objective directly supervises the biological signal.** Compared with pure noise prediction, direct supervision of \(\mathbf{x}_0\) provides a more direct fit to expression amplitudes, although it relies on appropriate normalization and calibration.
+4. **Classifier-free guidance amplifies the conditional contribution.** It improves condition consistency during sampling, usually at the cost of some diversity.
+5. **Timestep resampling follows an importance-sampling principle.** Loss-second-moment sampling focuses on high-loss timesteps, approximately reducing gradient variance and improving sample efficiency.
 
-- `sum/mean`: linear superposition (interpretable, stable);
-- `adaptive`: Based on weighted superposition, introduce pairwise nonlinear interaction terms
-  \\(\phi([z_i,z_j,z_i\\odot z_j,|z_i-z_j|])\\) merged with gate control:
-  \\[
-  z_{combo}=g\\odot z_{lin} + (1-g)\\odot (z_{lin}+z_{pair})
-  \\]
-  where \\(g=\\sigma(\\psi([z_{lin},\\bar z]))\\).
+## 8. Relationship to combinatorial perturbations
 
-This allows the combined perturbation to explicitly express a portion of the synergistic/antagonistic nonlinear effects while keeping the single perturbation path unchanged.
+The implementation can encode individual perturbation latent vectors, combine them, and then sample the resulting response:
+
+- `sum/mean`: linear composition that is stable and directly interpretable;
+- `adaptive`: weighted linear composition augmented with pairwise nonlinear interactions,
+  \(\phi([z_i,z_j,z_i\odot z_j,|z_i-z_j|])\), followed by gated fusion:
+
+  \[
+  z_{combo}=g\odot z_{lin} + (1-g)\odot (z_{lin}+z_{pair})
+  \]
+
+  where \(g=\sigma(\psi([z_{lin},\bar z]))\).
+
+This formulation captures part of the synergistic or antagonistic nonlinear response while preserving the original single-perturbation pathway.

@@ -1,67 +1,70 @@
-# scERso conditional diffusion model (Conditional Diffusion for Single-cell Response)
+# scERso Conditional Diffusion Model for Single-cell Response Prediction
 
-The current **main line of this warehouse has been switched to the conditional diffusion model**, and the old MLP/Transformer training route (`train.py`) is no longer recommended.
+The repository's **main workflow now uses the conditional diffusion model**. The legacy MLP/Transformer training path (`train.py`) is retained for historical comparison but is no longer recommended.
 
-It is currently recommended to use:
+Use the following entry points for current experiments:
 - Training: `train_diffusion.py`
 - Evaluation: `evaluate_diffusion.py`
-- Inference/Combination/Interpolation: `predict_diffusion.py`
+- Inference, perturbation composition, and interpolation: `predict_diffusion.py`
 - Visualization: `visualize_diffusion.py`
 
 ---
 
-## 1. Current mainline capabilities
+## 1. Main capabilities
 
 ### 1.1 Conditional diffusion backbone
-- Background-effect decoupling: `z_bg` (background) and `z_eff` (effect) are encoded separately.
-- Target mode: `target_mode = target | delta`.
-- Sampling and guidance: supports classifier-free guidance, DDIM step control, and EMA weight evaluation.
+- Background-effect disentanglement: `z_bg` (background) and `z_eff` (effect) are encoded separately.
+- Target modes: `target_mode = target | delta`.
+- Sampling and guidance: classifier-free guidance, configurable DDIM sampling steps, and EMA-weight evaluation are supported.
 
-### 1.2 Dual task mode (key point)
-Use `--task_mode` to distinguish two types of tasks to avoid "mismatch between task definition and data":
+### 1.2 Multiple task modes
+Use `--task_mode` to select the task definition and avoid mismatches between the task and the input data:
 
 1. `single_gene`
-   - Suitable for single gene perturbation tasks such as Adamson
-   - Condition fields: `perturb_gene_idx`, `is_control`
+   - Designed for single-gene perturbation datasets such as Adamson.
+   - Condition fields: `perturb_gene_idx` and `is_control`.
 
 2. `translation`
-   - Suitable for two-condition translation (such as day4 -> day6)
-   - Condition fields: `condition_id`, `source_flag`
+   - Designed for two-condition translation tasks, such as day4 -> day6.
+   - Condition fields: `condition_id` and `source_flag`.
 
-### 1.3 Data and control/reference mechanism
-- Support `split_strategy = random | perturbation | custom`
-- Under the perturbation zero-shot setting, val/test reuses the train control bank to avoid crashes without control split
-- Support `control_match_mode`, `control_prototype_mode`, `control_prototype_temp`
+3. `drug`
+   - Designed for drug-response prediction with optional molecular structure, dose, and cellular-context conditions.
+
+### 1.3 Data and control/reference handling
+- Supports `split_strategy = random | perturbation | custom`.
+- Under perturbation zero-shot splits, validation and test samples reuse the training control bank when their own splits contain no controls.
+- Supports `control_match_mode`, `control_prototype_mode`, and `control_prototype_temp`.
 
 ---
 
-## 2. Project structure (related to the current main line)
+## 2. Project structure
 
-- `train_diffusion.py`: Conditional diffusion training entrance (main entrance)
-- `evaluate_diffusion.py`: Evaluation entrance (single-cell + perturbation-level indicators)
-- `predict_diffusion.py`: Single perturbation/combination perturbation prediction and latent interpolation trajectory output
-- `visualize_diffusion.py`: Combined disturbance analysis plot and diagnostic visualization
-- `models/scerso_diffusion.py`: Conditional diffusion model definition
-- `models/diffusion_core.py`: Diffusion process implementation
-- `utils/data_processor.py`: h5ad reading, partitioning, control pool, condition field construction
-- `docs/diffusion_methodology.md`: Methodology Description
+- `train_diffusion.py`: primary conditional-diffusion training entry point.
+- `evaluate_diffusion.py`: single-cell and perturbation-level evaluation.
+- `predict_diffusion.py`: single and combinatorial perturbation prediction and latent interpolation.
+- `visualize_diffusion.py`: combinatorial perturbation analysis and diagnostic visualization.
+- `models/scerso_diffusion.py`: conditional diffusion model definition.
+- `models/diffusion_core.py`: diffusion process implementation.
+- `utils/data_processor.py`: h5ad loading, split construction, control pools, and condition fields.
+- `docs/diffusion_methodology.md`: methodological description.
 
-> Old route files (such as `train.py`, `evaluate_metrics.py`, `visualize.py`) are retained for historical comparison only and are not used as current recommended paths.
+> Legacy files such as `train.py`, `evaluate_metrics.py`, and `visualize.py` are retained only for historical comparison and are not part of the recommended workflow.
 
 ---
 
 ## 3. Environment and dependencies
 
-suggestion:
+Recommended environment:
 - Python 3.8+
 - PyTorch
 - scanpy / anndata
 - numpy / scipy / pandas
 - scikit-learn
 - matplotlib / seaborn
-- rdkit (only when using the SMILES drug feature)
+- rdkit, only when SMILES-derived drug features are used
 
-And recommended settings:
+The following setting is also recommended:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -69,9 +72,9 @@ export OMP_NUM_THREADS=1
 
 ---
 
-## 4. Training (main entrance)
+## 4. Training
 
-## 4.1 Adamson（single_gene）
+### 4.1 Adamson (`single_gene`)
 
 ```bash
 python train_diffusion.py \
@@ -83,7 +86,7 @@ python train_diffusion.py \
   --amp
 ```
 
-If there are combination perturbation tags such as `double_...`, `triple_...` or `GENE1+GENE2+GENE3` in the training data, multi-gene tag analysis can be turned on:
+When the training data contain combinatorial labels such as `double_...`, `triple_...`, or `GENE1+GENE2+GENE3`, enable multi-gene label parsing:
 
 ```bash
 python train_diffusion.py \
@@ -96,7 +99,7 @@ python train_diffusion.py \
   --amp
 ```
 
-## 4.2 day4/day6（translation）
+### 4.2 day4/day6 (`translation`)
 
 ```bash
 python train_diffusion.py \
@@ -110,7 +113,7 @@ python train_diffusion.py \
   --amp
 ```
 
-> Quick smoke available `--preset smoke`.
+> Use `--preset smoke` for a quick smoke test.
 
 ---
 
@@ -125,7 +128,7 @@ python evaluate_diffusion.py \
   --output_json ./checkpoints_xxx/eval_metrics.json
 ```
 
-A three-gene combination case can be additionally evaluated (if there is a corresponding combination label in h5ad, the true mean indicator of the case will be output at the same time):
+A three-gene composition case can also be evaluated. When the corresponding combination label is present in the h5ad file, the output includes metrics against its observed mean response:
 
 ```bash
 python evaluate_diffusion.py \
@@ -140,7 +143,7 @@ python evaluate_diffusion.py \
   --output_json ./checkpoints_xxx/eval_metrics_triple.json
 ```
 
-The translation data can be changed to:
+For translation data, use:
 
 ```bash
 --task_mode translation --split_strategy custom --split_col split
@@ -148,9 +151,9 @@ The translation data can be changed to:
 
 ---
 
-## 6. Reasoning and Visualization
+## 6. Inference and visualization
 
-### 6.1 Prediction/Combination/Interpolation
+### 6.1 Prediction, composition, and interpolation
 
 ```bash
 python predict_diffusion.py \
@@ -162,7 +165,7 @@ python predict_diffusion.py \
   --save_dir ./pred_out
 ```
 
-Three-gene perturbation case (just add a third gene to the original two-gene command):
+For a three-gene perturbation, append the third gene to the original two-gene command:
 
 ```bash
 python predict_diffusion.py \
@@ -185,7 +188,7 @@ python visualize_diffusion.py \
   --save_path ./combo_report.png
 ```
 
-Three-gene combination visualization:
+Three-gene composition visualization:
 
 ```bash
 python visualize_diffusion.py \
@@ -199,22 +202,22 @@ python visualize_diffusion.py \
 
 ---
 
-## 7. FAQ
+## 7. Frequently asked questions
 
-### Q1: `adata.obs Missing custom partition column: split`
-You used `split_strategy=custom`, but there is no `obs['split']` in the data. Can be changed to:
+### Q1: `adata.obs is missing the custom split column: split`
+The command uses `split_strategy=custom`, but the data do not contain `obs['split']`. Either use:
 
 ```bash
 --split_strategy perturbation
 ```
 
-Or prepare the `split` column in h5ad first.
+or create the `split` column in the h5ad file before training.
 
-### Q2: `--split_strategy perturbation` is clearly transmitted, but the log shows custom
-`--preset` will now only overwrite "not explicitly set" parameters; explicit parameters will be retained. If the error persists, please confirm that parameters are not passed repeatedly on the command line.
+### Q2: I passed `--split_strategy perturbation`, but the log still reports `custom`
+`--preset` only overrides parameters that were not explicitly supplied. Explicit command-line arguments are retained. If the issue persists, check whether the same argument appears more than once in the command.
 
-### Q3: val/test reports that the control pool is empty
-Under perturbation zero-shot, val/test reuses the train control bank. If an error is still reported, it is usually because the training set itself does not have control samples, and you need to check the original data first.
+### Q3: The validation or test split reports an empty control pool
+Under a perturbation zero-shot split, validation and test data reuse the training control bank. If the error persists, the training split itself probably contains no control samples and the source data should be checked.
 
 ---
 

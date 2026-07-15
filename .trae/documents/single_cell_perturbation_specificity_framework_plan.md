@@ -1,32 +1,37 @@
-# Single Cell Perturbation Specificity Modeling Framework (scERso) Development Plan
+# Development Plan for the Single-cell Perturbation Specificity Modeling Framework (scERso)
 
-We will build a simple and efficient MLP discriminator framework for learning the "perturbation-cell background" matching relationship.
+We will build a simple and efficient MLP discriminator that learns whether a perturbation is compatible with a given cellular background.
 
-## 1. Environment preparation and project initialization
-- Create basic directory structure: `models/`, `utils/`, `data/`.
-- Write `synthetic_data.py`: Generate simulated single-cell expression matrices (HVGs) and perturbation annotation data to ensure that the process can be run through without real data.
+## 1. Environment and project initialization
 
-## 2. Core module development
-### **Data Layer**
-- Implement `PerturbationDataset`: Encapsulate (RNA-seq, Perturbation, Label) triplet.
-- Processing feature fusion: splicing high-dimensional RNA features with perturbation vectors (Embedding or One-hot).
+- Create the base directory structure: `models/`, `utils/`, and `data/`.
+- Implement `synthetic_data.py` to generate simulated highly variable gene expression matrices and perturbation annotations, allowing the complete workflow to run without real data.
 
-### **Model Layer**
-- Design `SpecificityMLP`:
-    - Input layer: receives the fused features.
-    - Hidden layer: multi-layer fully connected + BatchNorm + Dropout (to prevent over-fitting).
-    - Output layer: Sigmoid activation, output matching probability.
+## 2. Core modules
 
-### **Train Layer**
-- Write `train.py`: including a complete training cycle, early stopping mechanism (Early Stopping) and performance indicator (AUC, Accuracy) monitoring.
+### Data layer
 
-## 3. Verification and Delivery
-- Run tests on synthetic data to ensure the model converges and correctly identifies "specific" patterns.
-- Provide detailed documentation on how to replace HVGs with real large-scale pre-training Embedding.
+- Implement `PerturbationDataset` to package `(RNA-seq, perturbation, label)` tuples.
+- Concatenate high-dimensional RNA features with perturbation vectors represented by embeddings or one-hot encodings.
 
-## Key technical points
-- **Feature Dimensionality Reduction**: Initially use HVGs (such as 2000 dimensions) as RNA input.
-- **Positive and negative sample balance**: Use a negative sampling strategy when constructing "mismatching" samples.
-- **Scalability**: The model interface is compatible with the Embedding input of pre-trained models such as scGPT.
+### Model layer
 
-Please confirm whether to start executing according to this plan?
+- Implement `SpecificityMLP`:
+  - Input layer: receives the fused feature vector.
+  - Hidden layers: fully connected layers with BatchNorm and Dropout to reduce overfitting.
+  - Output layer: applies a sigmoid activation and returns a matching probability.
+
+### Training and validation layer
+
+- Implement `train.py` with a complete training loop, early stopping, and monitoring of AUC and accuracy.
+
+## 3. Validation and delivery
+
+- Run tests on synthetic data to verify convergence and correct identification of specificity patterns.
+- Provide detailed documentation explaining how to replace highly variable genes with large pretrained embeddings.
+
+## Key technical considerations
+
+- **Feature dimensionality reduction:** initially use highly variable genes, such as a 2,000-dimensional RNA input.
+- **Positive-negative balance:** use negative sampling when constructing mismatched examples.
+- **Extensibility:** keep the model interface compatible with embeddings produced by pretrained models such as scGPT.

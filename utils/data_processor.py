@@ -89,7 +89,7 @@ class DataProcessor:
                 return x
 
             self.adata.obs['perturbation'] = self.adata.obs['perturbation'].apply(clean_adamson_pert)
-            print(f">>> Adamson 格式清洗示例: {self.adata.obs['perturbation'].unique()[:5]}")
+            print(f">>> Example cleaned Adamson labels: {self.adata.obs['perturbation'].unique()[:5]}")
 
         if 'SMILES' in self.adata.obs and 'smiles' not in self.adata.obs:
             self.adata.obs['smiles'] = self.adata.obs['SMILES']
@@ -139,7 +139,7 @@ class DataProcessor:
         self.perturb_gene_vocab = sorted(gene_set)
         self.perturb_gene_to_idx = {g: i for i, g in enumerate(self.perturb_gene_vocab)}
         self.idx_to_perturb_gene = {i: g for g, i in self.perturb_gene_to_idx.items()}
-        print(f">>> single-gene perturbation vocab size: {len(self.perturb_gene_vocab)} (含 PAD)")
+        print(f">>> single-gene perturbation vocab size: {len(self.perturb_gene_vocab)} (including PAD)")
 
         pad_idx = self.perturb_gene_to_idx[self.pad_gene_token]
         perturb_gene_idx, is_control = [], []
@@ -214,7 +214,7 @@ class DataProcessor:
 
             mol = Chem.MolFromSmiles(pert_to_smiles[name])
             if mol is None:
-                print(f"!!! 警告: 无法解析 SMILES: {name}")
+                print(f"!!! Warning: unable to parse SMILES: {name}")
                 drug_feats.append(np.zeros(2048, dtype=np.float32))
                 continue
 
@@ -223,7 +223,7 @@ class DataProcessor:
 
         self.drug_embeddings = torch.tensor(np.stack(drug_feats, axis=0), dtype=torch.float32)
         self.drug_dim = int(self.drug_embeddings.shape[1])
-        print(f">>> 药物特征提取完成，维度: {self.drug_embeddings.shape}")
+        print(f">>> Drug-feature extraction complete; shape: {self.drug_embeddings.shape}")
 
     def _prepare_dose_features(self):
         if 'dose' not in self.adata.obs:
@@ -252,18 +252,18 @@ class DataProcessor:
 
         for key in candidate_keys:
             if key in self.adata.obsm:
-                print(f">>> 检测到 ATAC 特征: obsm['{key}']")
+                print(f">>> Detected ATAC features: obsm['{key}']")
                 atac = self._ensure_dense_numpy(self.adata.obsm[key]).astype(np.float32)
                 self.atac_features = torch.tensor(atac, dtype=torch.float32)
                 self.atac_dim = int(self.atac_features.shape[1])
-                print(f">>> ATAC 维度: {self.atac_features.shape}")
+                print(f">>> ATAC shape: {self.atac_features.shape}")
                 break
 
         if self.atac_features is None and atac_bank_path is not None:
             if not os.path.exists(atac_bank_path):
-                raise FileNotFoundError(f"ATAC bank 不存在: {atac_bank_path}")
+                raise FileNotFoundError(f"ATAC bank does not exist: {atac_bank_path}")
 
-            print(f">>> 从 atac_bank 加载 ATAC 特征: {atac_bank_path}")
+            print(f">>> Loading ATAC features from atac_bank: {atac_bank_path}")
             bank = np.load(atac_bank_path, allow_pickle=True)
 
             if 'genes' in bank:
@@ -278,10 +278,10 @@ class DataProcessor:
 
             if background_key in self.adata.obs:
                 bg_values = self.adata.obs[background_key].astype(str).values
-                print(f">>> 使用 obs['{background_key}'] 映射 ATAC 背景。")
+                print(f">>> Using obs['{background_key}'] to map ATAC backgrounds.")
             else:
                 bg_values = self.adata.obs[self.cell_line_col].astype(str).values
-                print(f">>> 未找到 obs['{background_key}']，回退使用 obs['{self.cell_line_col}']。")
+                print(f">>> obs field not found['{background_key}'],回退Using obs['{self.cell_line_col}'].")
 
             sample_vec = next(iter(bank_map.values()))
             atac_arr = np.zeros((self.adata.n_obs, sample_vec.shape[0]), dtype=np.float32)
@@ -293,11 +293,11 @@ class DataProcessor:
                     missing_bg.add(bg)
 
             if len(missing_bg) > 0:
-                print(f"!!! 警告: 以下背景在 atac_bank 中缺失，已用全0向量替代: {sorted(list(missing_bg))[:10]}")
+                print(f"!!! 警告: The following backgrounds are missing from atac_bank and were replaced with all-zero vectors: {sorted(list(missing_bg))[:10]}")
 
             self.atac_features = torch.tensor(atac_arr, dtype=torch.float32)
             self.atac_dim = int(self.atac_features.shape[1])
-            print(f">>> 从 atac_bank 构建样本级 ATAC 完成，维度: {self.atac_features.shape}")
+            print(f">>> Sample-level ATAC construction from atac_bank is complete; shape: {self.atac_features.shape}")
 
         if self.atac_features is not None:
             self.cell_line_atac_baselines = {}
@@ -324,7 +324,7 @@ class DataProcessor:
         return x
 
     def load_data(self):
-        print(f">>> 正在加载数据: {self.h5ad_path}")
+        print(f">>> Loading data: {self.h5ad_path}")
         self.adata = sc.read_h5ad(self.h5ad_path)
 
         self._prepare_metadata()
@@ -352,10 +352,10 @@ class DataProcessor:
                 avg_expr = np.asarray(avg_expr).flatten()
                 self.cell_line_baselines[cl_id] = torch.tensor(avg_expr, dtype=torch.float32)
             else:
-                print(f"!!! 警告: 细胞系 {cl_name} 缺失控制组数据")
+                print(f"!!! 警告: Cell line {cl_name} has no control data")
 
         self.gene_to_idx = {gene: i for i, gene in enumerate(self.adata.var_names)}
-        print(f">>> 数据加载完成: {self.adata.n_obs} 细胞, {self.adata.n_vars} 基因")
+        print(f">>> Data loading complete: {self.adata.n_obs} cells, {self.adata.n_vars} genes")
         return self.adata.n_vars, len(self.perturb_categories), len(self.cell_line_categories)
 
 
@@ -464,15 +464,15 @@ class DataProcessor:
 
         if self.split_strategy == 'custom':
             if self.split_col not in self.adata.obs:
-                raise ValueError(f"adata.obs 缺少自定义划分列: {self.split_col}")
+                raise ValueError(f"adata.obs is missing the custom split column: {self.split_col}")
             split_values = self.adata.obs[self.split_col].astype(str).values
             train_idx = np.where(split_values == 'train')[0]
             val_idx = np.where(split_values == 'val')[0]
             test_idx = np.where(split_values == 'test')[0]
-            print(f">>> 采用自定义划分策略: obs['{self.split_col}']")
-            print(f">>> 划分结果: train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
+            print(f">>> Using the custom split strategy: obs['{self.split_col}']")
+            print(f">>> Split sizes: train={len(train_idx)} val={len(val_idx)} test={len(test_idx)}")
             if len(train_idx) == 0 or len(val_idx) == 0 or len(test_idx) == 0:
-                raise ValueError(f"自定义划分列 {self.split_col} 中 train/val/test 至少有一个为空。")
+                raise ValueError(f"自定义划分列 {self.split_col} contains an empty train, validation, or test partition.")
         elif self.split_strategy == 'perturbation':
             print(">>> Adopt the strategy of dividing by perturbed genes (Zero-shot hierarchical mode)...")
             real_perts = [p for p in self.perturb_categories if p != 'control']
@@ -496,7 +496,7 @@ class DataProcessor:
             ctrl_idx = np.where(self.adata.obs['perturbation'] == 'control')[0]
             train_idx = np.concatenate([train_idx_p, ctrl_idx])
 
-            print(f">>> 划分结果: 训练集 {len(train_p)} 基因(+Control), 验证集 {len(val_p)} 基因, 测试集 {len(test_p)} 基因")
+            print(f">>> Split sizes: training set {len(train_p)} genes(+Control), validation set {len(val_p)} genes, test set {len(test_p)} genes")
         else:
             print(">>> Use random partitioning strategy...")
             train_idx, temp = train_test_split(indices, test_size=(self.val_size + self.test_size), random_state=42)

@@ -215,7 +215,7 @@ Return a more complete metric:
 def train():
     args = get_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f">>> scERso V7 启动 | 任务: 生成式扰动预测 | 策略: {args.split_strategy}")
+    print(f">>> scERso V7 启动 | 任务: 生成式Perturbation预测 | 策略: {args.split_strategy}")
 
     # 1. Data preparation
     processor = DataProcessor(
@@ -302,7 +302,7 @@ def train():
     start_epoch = 0
 
     if args.resume_path is not None:
-        print(f">>> 检测到断点续训: {args.resume_path}")
+        print(f">>> Resuming from checkpoint: {args.resume_path}")
         resume_ckpt = torch.load(args.resume_path, map_location=device, weights_only=False)
         model.load_state_dict(resume_ckpt['model_state_dict'])
         optimizer.load_state_dict(resume_ckpt['optimizer_state_dict'])
@@ -316,7 +316,7 @@ def train():
         start_epoch = resume_ckpt.get('epoch', -1) + 1
         early_stopper.best_score = resume_ckpt.get('early_stopping_best_score', early_stopper.best_score)
         early_stopper.counter = resume_ckpt.get('early_stopping_counter', early_stopper.counter)
-        print(f">>> 从 epoch {start_epoch} 继续训练")
+        print(f">>> Continue training from epoch {start_epoch} ")
     
     for epoch in range(start_epoch, args.epochs):
         # Warmup
@@ -332,8 +332,8 @@ def train():
         if args.pretrained_emb:
             is_frozen = epoch < args.freeze_epochs
             model.freeze_perturbation_embedding(is_frozen)
-            if is_frozen: print(f">>> Epoch {epoch+1}: 扰动 Embedding 层已 冻结")
-            else: print(f">>> Epoch {epoch+1}: 扰动 Embedding 层已 解冻")
+            if is_frozen: print(f">>> Epoch {epoch+1}: Perturbation embedding layer is frozen")
+            else: print(f">>> Epoch {epoch+1}: Perturbation embedding layer is unfrozen")
 
         model.train()
         train_loss = 0
@@ -441,7 +441,7 @@ def train():
                 'n_cell_lines': n_cell_lines,
                 'baselines': processor.cell_line_baselines
             }, os.path.join(args.save_dir, "best_model.pth"))
-            print(f"*** 发现更优模型 (Val Top20 DE MSE: {-best_score:.6f}), 已保存")
+            print(f"*** Found an improved model (Val Top20 DE MSE: {-best_score:.6f}), saved")
 
         # Save checkpoints every epoch and only keep the latest N
         epoch_ckpt = {
@@ -465,7 +465,7 @@ def train():
         rotate_epoch_checkpoints(args.save_dir, args.keep_last_n)
         
         if early_stopper(current_score):
-            print(f"!!! 早停触发 (核心基因拟合已达瓶颈)")
+            print(f"!!! Early stopping triggered because fitting of key response genes has plateaued")
             break
 
     # 5. Final test set evaluation (using the best saved weights)
@@ -499,7 +499,7 @@ def train():
             test_metrics.append(m)
     
     final_test_m = {k: np.mean([m[k] for m in test_metrics]) for k in test_metrics[0].keys()} if test_metrics else {}
-    print(f"!!! 最终评估结果 (Test Set) !!!")
+    print(f"!!! Final evaluation results (test set) !!!")
     print(f"All Pearson: {final_test_m.get('all_pearson', 0.0):.4f}")
     print(f"Delta Pearson: {final_test_m.get('delta_pearson', 0.0):.4f}")
     print(f"Top20 MSE: {final_test_m.get('top20_mse', 0.0):.4f}")

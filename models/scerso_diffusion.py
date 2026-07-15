@@ -630,7 +630,7 @@ class PerturbationDiffusionPredictor(nn.Module):
             gate = self.latent_gate(torch.cat([out, avg_latent], dim=1))
             out = gate * out + (1.0 - gate) * (out + pair_agg)
         elif mode != "sum":
-            raise ValueError(f"未知组合模式: {mode}")
+            raise ValueError(f"Unknown composition mode: {mode}")
         return out
 
     @staticmethod

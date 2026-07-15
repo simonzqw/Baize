@@ -210,7 +210,7 @@ class PerturbationPredictor(nn.Module):
             return
         self.perturb_embedding.weight.requires_grad = not freeze
         state = "freeze" if freeze else "thaw"
-        print(f">>> 扰动 Embedding 层已 {state}")
+        print(f">>> Perturbation embedding layer is {state}")
 
 
 class PerturbationPredictorNoCellLine(nn.Module):

@@ -13,10 +13,10 @@ Responsible for loading external pre-trained gene vectors and aligning them with
         
     def load_weights(self, default_dim=200):
         if not os.path.exists(self.embedding_path):
-            print(f"!!! 警告: 预训练文件 {self.embedding_path} 不存在。将使用随机初始化。")
+            print(f"!!! 警告: Pretrained file {self.embedding_path} does not exist. Random initialization will be used.")
             return None
         
-        print(f">>> 正在加载预训练向量: {self.embedding_path}")
+        print(f">>> 正在Load pretrained vectors: {self.embedding_path}")
         
         # Assume the file is CSV (gene_name, dim1, dim2...), no header or index is the gene name
         # Fine-tuning may be required depending on the actual download format (for example, gene2vec is usually txt or bin)
@@ -30,7 +30,7 @@ Responsible for loading external pre-trained gene vectors and aligning them with
                 print(">>> It was detected that the first line of the file contains metadata and has been skipped.")
                 df = df.iloc[1:]
                 
-            print(f">>> 已读取 {len(df)} 个基因的预训练向量，维度: {df.shape[1]}")
+            print(f">>> Loaded {len(df)} 个genes的预训练向量,维度: {df.shape[1]}")
             
             # Build weight matrix
             n_perturbations = len(self.perturb_map)
@@ -56,9 +56,9 @@ Responsible for loading external pre-trained gene vectors and aligning them with
                 else:
                     weights[idx] = mean_vec
                     
-            print(f">>> 预训练向量匹配成功率: {hit_count}/{n_perturbations} ({hit_count/n_perturbations:.1%})")
+            print(f">>> Pretrained-vector matching rate: {hit_count}/{n_perturbations} ({hit_count/n_perturbations:.1%})")
             return torch.FloatTensor(weights)
             
         except Exception as e:
-            print(f"!!! 加载预训练向量失败: {e}")
+            print(f"!!! Load pretrained vectors失败: {e}")
             return None

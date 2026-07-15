@@ -47,7 +47,7 @@ def resolve_cell_line(processor, cell_line_arg):
         pass
 
     if cell_line_arg not in processor.cell_line_map:
-        raise ValueError(f"未找到 cell line: {cell_line_arg}")
+        raise ValueError(f"Cell line not found: {cell_line_arg}")
     return processor.cell_line_map[cell_line_arg]
 
 
@@ -95,9 +95,9 @@ def load_model(checkpoint, processor, n_genes, n_perts, device):
     ).to(device)
     missing, unexpected = model.load_state_dict(state_dict, strict=False)
     if len(missing) > 0:
-        print(f">>> 提示: checkpoint 缺少以下参数（已用随机初始化兼容）: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
+        print(f">>> Note: the checkpoint is missing the following parameters; random initialization was used for compatibility: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
     if len(unexpected) > 0:
-        print(f">>> 提示: checkpoint 存在未使用参数: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
+        print(f">>> Note: the checkpoint contains unused parameters: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
     if 'ema_state_dict' in checkpoint and checkpoint['ema_state_dict'] is not None:
         for name, p in model.named_parameters():
             if p.requires_grad and name in checkpoint['ema_state_dict']:
@@ -160,7 +160,7 @@ def visualize():
     for gene in args.perturb_genes:
         resolved_gene, auto_picked = resolve_or_autopick_gene(processor, gene, cell_line_id)
         if auto_picked:
-            print(f">>> 提示: 扰动 {gene} 不存在，自动替换为 {resolved_gene}")
+            print(f">>> 提示: Perturbation {gene} was not found and was automatically replaced with {resolved_gene}")
         resolved_genes.append(resolved_gene)
         pid = processor.perturb_map[resolved_gene]
         perturb_ids.append(pid)
@@ -223,7 +223,7 @@ def visualize():
     if len(resolved_genes) == 1:
         observed_expr = get_observed_mean_expression(processor, cell_line_id, resolved_genes[0])
         if observed_expr is not None:
-            print(f">>> 已匹配真实均值样本: gene={resolved_genes[0]}")
+            print(f">>> Matched observed mean samples: gene={resolved_genes[0]}")
 
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, axes = plt.subplots(2, 2, figsize=(20, 14))
@@ -316,8 +316,8 @@ def visualize():
     plt.tight_layout()
     plt.savefig(args.save_path, dpi=260)
     plt.close(fig)
-    print(f">>> 图已保存: {args.save_path}")
-    print(f">>> 基因报告: {report_csv}")
+    print(f">>> 图saved: {args.save_path}")
+    print(f">>> genes报告: {report_csv}")
 
 
 if __name__ == "__main__":
