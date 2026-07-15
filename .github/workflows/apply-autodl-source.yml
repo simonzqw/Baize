@@ -27,8 +27,12 @@ jobs:
           import shutil
           import zipfile
 
-          payload = Path('.github/scerso_source_payload.b64')
-          raw = base64.b64decode(payload.read_text(encoding='utf-8'))
+          chunk_dir = Path('.github/payload_chunks')
+          encoded = ''.join(
+              path.read_text(encoding='utf-8')
+              for path in sorted(chunk_dir.glob('*.txt'))
+          )
+          raw = base64.b64decode(encoded)
           with zipfile.ZipFile(io.BytesIO(raw)) as archive:
               archive.extractall('.')
 
@@ -38,7 +42,7 @@ jobs:
               'output.log',
               'data/gene2vec_dim_200_iter_9.txt',
               'data/specificity_mlp_model.pth',
-              '.github/scerso_source_payload.b64',
+              '.github/payload_chunks',
               '.github/workflows/apply-autodl-source.yml',
           ]
           for name in obsolete:
