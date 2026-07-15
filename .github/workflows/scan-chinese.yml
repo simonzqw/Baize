@@ -1,4 +1,4 @@
-name: Scan Chinese text
+name: Translate repository to English
 
 on:
   push:
@@ -8,53 +8,29 @@ permissions:
   contents: write
 
 jobs:
-  scan:
+  translate:
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/translate-chinese-to-english
-      - name: Generate tracked-file CJK report
-        shell: python
+          fetch-depth: 0
+      - name: Translate Chinese text without changing code interfaces
+        run: python scripts/translate_chinese_to_english.py
+      - name: Validate Python syntax
+        run: python -m compileall -q .
+      - name: Verify no Chinese text remains
+        run: grep -Fxq 'TOTAL_MATCHING_LINES=0' CHINESE_SCAN.txt
+      - name: Remove temporary translation helpers
         run: |
-          import pathlib
-          import re
-          import subprocess
-
-          cjk = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
-          tracked = subprocess.check_output(
-              ["git", "ls-files", "-z"]
-          ).decode("utf-8").split("\0")
-
-          matches = []
-          for name in tracked:
-              if not name or name in {
-                  ".github/workflows/scan-chinese.yml",
-                  "CHINESE_SCAN.txt",
-              }:
-                  continue
-              path = pathlib.Path(name)
-              try:
-                  raw = path.read_bytes()
-                  if b"\x00" in raw:
-                      continue
-                  text = raw.decode("utf-8")
-              except (OSError, UnicodeDecodeError):
-                  continue
-              for line_no, line in enumerate(text.splitlines(), 1):
-                  if cjk.search(line):
-                      matches.append(f"{name}:{line_no}:{line}")
-
-          pathlib.Path("CHINESE_SCAN.txt").write_text(
-              "\n".join(matches) + f"\nTOTAL_MATCHING_LINES={len(matches)}\n",
-              encoding="utf-8",
-          )
-      - name: Commit scan report
+          rm -f CHINESE_SCAN.txt
+          rm -f scripts/translate_chinese_to_english.py
+          rm -f .github/workflows/scan-chinese.yml
+      - name: Commit translated repository
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add CHINESE_SCAN.txt
-          git diff --cached --quiet && exit 0
-          git commit -m "Add Chinese text scan report [skip ci]"
+          git add -A
+          git commit -m "Translate all Chinese repository content to English [skip ci]"
           git push
