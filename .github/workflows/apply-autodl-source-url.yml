@@ -1,0 +1,91 @@
+name: Apply real AutoDL source archive
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-source:
+    if: github.head_ref == 'agent/apply-real-autodl-source-url'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - name: Download and verify curated source archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=/tmp/scerso_payload.zip
+          curl --fail --show-error --silent --location \
+            'https://filebin.net/baize-autodl-605be86244fa/scerso_payload.zip' \
+            --output "$archive"
+          echo '605be86244fa3224fc947ab5b90877b688accab6d6fb2caa7b3dd4bb6e422808  /tmp/scerso_payload.zip' | sha256sum --check --strict
+          unzip -q -o "$archive" -d .
+
+      - name: Remove obsolete and temporary repository artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f AUTODL_SYNC_REQUEST.txt REPO_AUDIT_MANIFEST.csv output.log
+          rm -f data/gene2vec_dim_200_iter_9.txt data/specificity_mlp_model.pth
+          find . -type d \( -name '__pycache__' -o -name '.ipynb_checkpoints' \) -prune -exec rm -rf {} +
+          rm -rf .github/payload_chunks
+          rm -f .github/workflows/apply-autodl-source.yml
+          rm -f .github/workflows/apply-autodl-source-url.yml
+
+      - name: Validate synchronized source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q .
+          while IFS= read -r -d '' script; do bash -n "$script"; done < <(find . -type f -name '*.sh' -print0)
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import re
+
+          ignored = {'.git'}
+          cjk = re.compile(r'[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]')
+          findings = []
+          for path in Path('.').rglob('*'):
+              if not path.is_file() or any(part in ignored for part in path.parts):
+                  continue
+              if path.suffix == '.json':
+                  json.loads(path.read_text(encoding='utf-8'))
+              if path.suffix not in {'.py', '.md', '.txt', '.sh', '.json', '.yaml', '.yml'}:
+                  continue
+              try:
+                  text = path.read_text(encoding='utf-8')
+              except UnicodeDecodeError:
+                  continue
+              for number, line in enumerate(text.splitlines(), 1):
+                  if cjk.search(line):
+                      findings.append(f'{path}:{number}:{line}')
+          if findings:
+              raise SystemExit('Chinese text remains:\n' + '\n'.join(findings[:50]))
+          PY
+
+      - name: Commit actual source files
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          changed=$(git diff --cached --name-only | wc -l | tr -d ' ')
+          echo "Changed files: $changed"
+          if [ "$changed" -lt 20 ]; then
+            echo 'Refusing to commit: fewer than 20 real files changed.' >&2
+            git diff --cached --name-status
+            exit 1
+          fi
+          git diff --cached --name-status
+          git commit -m 'Synchronize curated AutoDL source files [skip ci]'
+          git push origin HEAD:${{ github.head_ref }}
