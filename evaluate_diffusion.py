@@ -220,9 +220,9 @@ def get_args():
 def resolve_cell_line(processor, cell_line_arg):
     if cell_line_arg is None:
         if not processor.cell_line_baselines:
-            raise ValueError("没有可用的 cell-line control baseline。")
+            raise ValueError("No cell-line control baseline available.")
         first_id = sorted(processor.cell_line_baselines.keys())[0]
-        print(f">>> 未传 --cell_line，默认使用: {processor.cell_line_categories[first_id]} (id={first_id})")
+        print(f">>> --cell_line was not provided; using the default: {processor.cell_line_categories[first_id]} (id={first_id})")
         return first_id
     try:
         cl_id = int(cell_line_arg)
@@ -231,7 +231,7 @@ def resolve_cell_line(processor, cell_line_arg):
     except ValueError:
         pass
     if cell_line_arg not in processor.cell_line_map:
-        raise ValueError(f"未找到 cell line: {cell_line_arg}")
+        raise ValueError(f"Cell line not found: {cell_line_arg}")
     return processor.cell_line_map[cell_line_arg]
 
 
@@ -257,7 +257,7 @@ def evaluate_combo_case(args, processor, model, device, sample_steps, guidance_s
     if args.combo_genes is None:
         return None
     if len(args.combo_genes) < 2:
-        raise ValueError("--combo_genes 至少需要两个基因；三基因 case 例如: --combo_genes FOXA2 GATA6 SOX17")
+        raise ValueError("--combo_genes requires at least two genes; three-gene case example: --combo_genes FOXA2 GATA6 SOX17")
 
     cell_line_id = resolve_cell_line(processor, args.cell_line)
     control = processor.get_cell_line_control(cell_line_id, device=device).unsqueeze(0)
@@ -268,7 +268,7 @@ def evaluate_combo_case(args, processor, model, device, sample_steps, guidance_s
     latents, perturb_ids, resolved_genes = [], [], []
     for gene in args.combo_genes:
         if gene not in processor.perturb_map:
-            raise ValueError(f"组合扰动基因不在 perturbation vocab 中: {gene}")
+            raise ValueError(f"The combinatorial perturbation gene is not in the perturbation vocabulary: {gene}")
         resolved_genes.append(gene)
         pid = processor.perturb_map[gene]
         perturb_ids.append(pid)
@@ -355,7 +355,7 @@ def load_model_from_checkpoint(checkpoint, n_genes, n_perts, processor, device, 
     if output_gene_weights is None and 'output_gene_embedding' in state_dict:
         output_gene_weights = state_dict['output_gene_embedding'].detach().cpu().float()
 
-    # 尽量从 checkpoint 恢复语义 perturb embedding 模式
+    # Try to restore semantic perturb embedding mode from checkpoint
     if hasattr(ckpt_args, 'pretrained_emb') and ckpt_args.pretrained_emb:
         loader = GeneEmbeddingLoader(ckpt_args.pretrained_emb, processor.id_to_perturb)
         pretrained_weights = loader.load_weights()
@@ -399,9 +399,9 @@ def load_model_from_checkpoint(checkpoint, n_genes, n_perts, processor, device, 
 
     missing, unexpected = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     if len(missing) > 0:
-        print(f">>> 提示: checkpoint 缺少以下参数（已用随机初始化兼容）: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
+        print(f">>> Note: the checkpoint is missing the following parameters; random initialization was used for compatibility: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
     if len(unexpected) > 0:
-        print(f">>> 提示: checkpoint 存在未使用参数: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
+        print(f">>> Note: the checkpoint contains unused parameters: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
     if getattr(get_args_cache, 'use_ema', False) and ('ema_state_dict' in checkpoint) and (checkpoint['ema_state_dict'] is not None):
         for name, p in model.named_parameters():
             if p.requires_grad and name in checkpoint['ema_state_dict']:
@@ -561,7 +561,7 @@ def evaluate():
         json.dump(final_m, f, indent=2, ensure_ascii=False)
 
     print(json.dumps(final_m, indent=2, ensure_ascii=False))
-    print(f">>> 指标已保存到: {args.output_json}")
+    print(f">>> Metrics saved to: {args.output_json}")
 
 
 if __name__ == "__main__":

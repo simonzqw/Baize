@@ -1,3 +1,8 @@
+19 CJK-containing lines remain
+TRANSLATION_EXIT_STATUS=1
+./utils/emb_loader.py:26: SyntaxWarning: invalid escape sequence '\s'
+  df = pd.read_csv(self.embedding_path, sep='\s+', index_col=0, header=None, engine='python')
+COMPILE_EXIT_STATUS=0
 predict_diffusion.py:160:            print(f">>> 提示: Perturbation {gene} was not found and was automatically replaced with {resolved_gene}")
 predict_diffusion.py:238:            print(f">>> 提示: interpolate_to={args.interpolate_to} was not found and was automatically replaced with {interp_gene}")
 train.py:218:    print(f">>> scERso V7 启动 | 任务: 生成式Perturbation预测 | 策略: {args.split_strategy}")

@@ -1,67 +1,70 @@
-# scERso 条件扩散模型（Conditional Diffusion for Single-cell Response）
+# scERso Conditional Diffusion Model for Single-cell Response Prediction
 
-本仓库当前**主线已切换为条件扩散模型**，不再推荐使用旧的 MLP/Transformer 训练路线（`train.py`）。
+The repository's **main workflow now uses the conditional diffusion model**. The legacy MLP/Transformer training path (`train.py`) is retained for historical comparison but is no longer recommended.
 
-当前建议统一使用：
-- 训练：`train_diffusion.py`
-- 评估：`evaluate_diffusion.py`
-- 推理/组合/插值：`predict_diffusion.py`
-- 可视化：`visualize_diffusion.py`
+Use the following entry points for current experiments:
+- Training: `train_diffusion.py`
+- Evaluation: `evaluate_diffusion.py`
+- Inference, perturbation composition, and interpolation: `predict_diffusion.py`
+- Visualization: `visualize_diffusion.py`
 
 ---
 
-## 1. 当前主线能力
+## 1. Main capabilities
 
-### 1.1 条件扩散主干
-- 背景-效应解耦：`z_bg`（background）与 `z_eff`（effect）分离编码。
-- 目标模式：`target_mode = target | delta`。
-- 采样与引导：支持 classifier-free guidance、DDIM 步数控制、EMA 权重评估。
+### 1.1 Conditional diffusion backbone
+- Background-effect disentanglement: `z_bg` (background) and `z_eff` (effect) are encoded separately.
+- Target modes: `target_mode = target | delta`.
+- Sampling and guidance: classifier-free guidance, configurable DDIM sampling steps, and EMA-weight evaluation are supported.
 
-### 1.2 双任务模式（重点）
-通过 `--task_mode` 区分两类任务，避免“任务定义与数据不匹配”：
+### 1.2 Multiple task modes
+Use `--task_mode` to select the task definition and avoid mismatches between the task and the input data:
 
 1. `single_gene`
-   - 适用于 Adamson 等单基因扰动任务
-   - 条件字段：`perturb_gene_idx`、`is_control`
+   - Designed for single-gene perturbation datasets such as Adamson.
+   - Condition fields: `perturb_gene_idx` and `is_control`.
 
 2. `translation`
-   - 适用于 two-condition translation（如 day4 -> day6）
-   - 条件字段：`condition_id`、`source_flag`
+   - Designed for two-condition translation tasks, such as day4 -> day6.
+   - Condition fields: `condition_id` and `source_flag`.
 
-### 1.3 数据与 control/reference 机制
-- 支持 `split_strategy = random | perturbation | custom`
-- 在 perturbation zero-shot 设置下，val/test 复用 train control bank，避免无 control split 崩溃
-- 支持 `control_match_mode`、`control_prototype_mode`、`control_prototype_temp`
+3. `drug`
+   - Designed for drug-response prediction with optional molecular structure, dose, and cellular-context conditions.
 
----
-
-## 2. 项目结构（与当前主线相关）
-
-- `train_diffusion.py`：条件扩散训练入口（主入口）
-- `evaluate_diffusion.py`：评估入口（single-cell + perturbation-level 指标）
-- `predict_diffusion.py`：单扰动/组合扰动预测与 latent 插值轨迹输出
-- `visualize_diffusion.py`：组合扰动分析图与诊断可视化
-- `models/scerso_diffusion.py`：条件扩散模型定义
-- `models/diffusion_core.py`：扩散过程实现
-- `utils/data_processor.py`：h5ad 读取、划分、control pool、条件字段构造
-- `docs/diffusion_methodology.md`：方法论说明
-
-> 旧路线文件（如 `train.py`, `evaluate_metrics.py`, `visualize.py`）保留仅供历史对照，不作为当前推荐路径。
+### 1.3 Data and control/reference handling
+- Supports `split_strategy = random | perturbation | custom`.
+- Under perturbation zero-shot splits, validation and test samples reuse the training control bank when their own splits contain no controls.
+- Supports `control_match_mode`, `control_prototype_mode`, and `control_prototype_temp`.
 
 ---
 
-## 3. 环境与依赖
+## 2. Project structure
 
-建议：
+- `train_diffusion.py`: primary conditional-diffusion training entry point.
+- `evaluate_diffusion.py`: single-cell and perturbation-level evaluation.
+- `predict_diffusion.py`: single and combinatorial perturbation prediction and latent interpolation.
+- `visualize_diffusion.py`: combinatorial perturbation analysis and diagnostic visualization.
+- `models/scerso_diffusion.py`: conditional diffusion model definition.
+- `models/diffusion_core.py`: diffusion process implementation.
+- `utils/data_processor.py`: h5ad loading, split construction, control pools, and condition fields.
+- `docs/diffusion_methodology.md`: methodological description.
+
+> Legacy files such as `train.py`, `evaluate_metrics.py`, and `visualize.py` are retained only for historical comparison and are not part of the recommended workflow.
+
+---
+
+## 3. Environment and dependencies
+
+Recommended environment:
 - Python 3.8+
 - PyTorch
 - scanpy / anndata
 - numpy / scipy / pandas
 - scikit-learn
 - matplotlib / seaborn
-- rdkit（仅当使用 SMILES 药物特征）
+- rdkit, only when SMILES-derived drug features are used
 
-并建议设置：
+The following setting is also recommended:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -69,9 +72,9 @@ export OMP_NUM_THREADS=1
 
 ---
 
-## 4. 训练（主入口）
+## 4. Training
 
-## 4.1 Adamson（single_gene）
+### 4.1 Adamson (`single_gene`)
 
 ```bash
 python train_diffusion.py \
@@ -83,7 +86,7 @@ python train_diffusion.py \
   --amp
 ```
 
-如果训练数据里有 `double_...`、`triple_...` 或 `GENE1+GENE2+GENE3` 这类组合扰动标签，可打开多基因标签解析：
+When the training data contain combinatorial labels such as `double_...`, `triple_...`, or `GENE1+GENE2+GENE3`, enable multi-gene label parsing:
 
 ```bash
 python train_diffusion.py \
@@ -96,7 +99,7 @@ python train_diffusion.py \
   --amp
 ```
 
-## 4.2 day4/day6（translation）
+### 4.2 day4/day6 (`translation`)
 
 ```bash
 python train_diffusion.py \
@@ -110,11 +113,11 @@ python train_diffusion.py \
   --amp
 ```
 
-> 快速冒烟可用 `--preset smoke`。
+> Use `--preset smoke` for a quick smoke test.
 
 ---
 
-## 5. 评估
+## 5. Evaluation
 
 ```bash
 python evaluate_diffusion.py \
@@ -125,7 +128,7 @@ python evaluate_diffusion.py \
   --output_json ./checkpoints_xxx/eval_metrics.json
 ```
 
-可额外评估一个三基因组合 case（若 h5ad 里有对应组合标签，会同时输出该 case 的真实均值指标）：
+A three-gene composition case can also be evaluated. When the corresponding combination label is present in the h5ad file, the output includes metrics against its observed mean response:
 
 ```bash
 python evaluate_diffusion.py \
@@ -140,7 +143,7 @@ python evaluate_diffusion.py \
   --output_json ./checkpoints_xxx/eval_metrics_triple.json
 ```
 
-对 translation 数据可改为：
+For translation data, use:
 
 ```bash
 --task_mode translation --split_strategy custom --split_col split
@@ -148,9 +151,9 @@ python evaluate_diffusion.py \
 
 ---
 
-## 6. 推理与可视化
+## 6. Inference and visualization
 
-### 6.1 预测/组合/插值
+### 6.1 Prediction, composition, and interpolation
 
 ```bash
 python predict_diffusion.py \
@@ -162,7 +165,7 @@ python predict_diffusion.py \
   --save_dir ./pred_out
 ```
 
-三基因扰动 case（在原来的双基因命令里追加第 3 个基因即可）：
+For a three-gene perturbation, append the third gene to the original two-gene command:
 
 ```bash
 python predict_diffusion.py \
@@ -174,7 +177,7 @@ python predict_diffusion.py \
   --save_dir ./pred_out_triple
 ```
 
-### 6.2 可视化
+### 6.2 Visualization
 
 ```bash
 python visualize_diffusion.py \
@@ -185,7 +188,7 @@ python visualize_diffusion.py \
   --save_path ./combo_report.png
 ```
 
-三基因组合可视化：
+Three-gene composition visualization:
 
 ```bash
 python visualize_diffusion.py \
@@ -199,22 +202,22 @@ python visualize_diffusion.py \
 
 ---
 
-## 7. 常见问题
+## 7. Frequently asked questions
 
-### Q1: `adata.obs 缺少自定义划分列: split`
-你用了 `split_strategy=custom`，但数据里没有 `obs['split']`。可改成：
+### Q1: `adata.obs is missing the custom split column: split`
+The command uses `split_strategy=custom`, but the data do not contain `obs['split']`. Either use:
 
 ```bash
 --split_strategy perturbation
 ```
 
-或先在 h5ad 里准备 `split` 列。
+or create the `split` column in the h5ad file before training.
 
-### Q2: 明明传了 `--split_strategy perturbation`，日志却显示 custom
-`--preset` 现在只会覆盖“未显式设置”的参数；显式传参会保留。若仍异常，请确认命令行没有重复传参。
+### Q2: I passed `--split_strategy perturbation`, but the log still reports `custom`
+`--preset` only overrides parameters that were not explicitly supplied. Explicit command-line arguments are retained. If the issue persists, check whether the same argument appears more than once in the command.
 
-### Q3: val/test 报 control pool 为空
-在 perturbation zero-shot 下，val/test 复用 train control bank。若仍报错，通常是训练集本身没有 control 样本，需要先检查原始数据。
+### Q3: The validation or test split reports an empty control pool
+Under a perturbation zero-shot split, validation and test data reuse the training control bank. If the error persists, the training split itself probably contains no control samples and the source data should be checked.
 
 ---
 

@@ -331,7 +331,7 @@ def load_output_gene_weights(path, n_genes):
         raise ValueError(
             f"scGPT gene embedding row number must match n_genes: "
             f"{arr.shape[0]} vs {n_genes}. "
-            f"你应该使用按 adata.var_names 对齐的 2000HVG embedding。"
+            f"Use a 2,000-HVG embedding aligned to adata.var_names."
         )
 
     print(f">>> Loaded output gene prior from: {path}")

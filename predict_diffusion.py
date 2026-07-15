@@ -62,7 +62,7 @@ def resolve_cell_line(processor, cell_line_arg):
         pass
 
     if cell_line_arg not in processor.cell_line_map:
-        raise ValueError(f"未找到 cell line: {cell_line_arg}")
+        raise ValueError(f"Cell line not found: {cell_line_arg}")
     return processor.cell_line_map[cell_line_arg]
 
 
@@ -82,7 +82,7 @@ def resolve_or_autopick_gene(processor, gene, cell_line_id):
     for g in processor.perturb_categories:
         if g != 'control':
             return g, True
-    raise ValueError("未找到可用的非 control 扰动基因。")
+    raise ValueError("No available non-control perturbation genes were found.")
 
 
 def get_observed_mean_expression(processor, cell_line_id, perturb_name):
@@ -133,9 +133,9 @@ def main():
     ).to(device)
     missing, unexpected = model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     if len(missing) > 0:
-        print(f">>> 提示: checkpoint 缺少以下参数（已用随机初始化兼容）: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
+        print(f">>> Note: the checkpoint is missing the following parameters; random initialization was used for compatibility: {missing[:8]}{' ...' if len(missing) > 8 else ''}")
     if len(unexpected) > 0:
-        print(f">>> 提示: checkpoint 存在未使用参数: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
+        print(f">>> Note: the checkpoint contains unused parameters: {unexpected[:8]}{' ...' if len(unexpected) > 8 else ''}")
     if 'ema_state_dict' in checkpoint and checkpoint['ema_state_dict'] is not None:
         for name, p in model.named_parameters():
             if p.requires_grad and name in checkpoint['ema_state_dict']:
@@ -149,7 +149,7 @@ def main():
     if atac_feat is not None:
         atac_feat = atac_feat.unsqueeze(0)
     if len(args.perturb_genes) > 1 and atac_feat is not None:
-        print(">>> 提示: 组合扰动当前默认复用同一 cell-line baseline ATAC；若组合引发显著染色质变化，建议外部构建组合特异 ATAC 条件。")
+        print(">>> Tip: Combination perturbation currently multiplexes the same cell-line baseline ATAC by default; if the combination causes significant chromatin changes, it is recommended to externally construct combination-specific ATAC conditions.")
 
     latents = []
     perturb_ids = []
@@ -157,7 +157,7 @@ def main():
     for gene in args.perturb_genes:
         resolved_gene, auto_picked = resolve_or_autopick_gene(processor, gene, cell_line_id)
         if auto_picked:
-            print(f">>> 提示: 扰动 {gene} 不存在，自动替换为 {resolved_gene}")
+            print(f">>> 提示: Perturbation {gene} was not found and was automatically replaced with {resolved_gene}")
         resolved_genes.append(resolved_gene)
         pid = processor.perturb_map[resolved_gene]
         perturb_ids.append(pid)
@@ -205,7 +205,7 @@ def main():
     if len(resolved_genes) == 1:
         true_np = get_observed_mean_expression(processor, cell_line_id, resolved_genes[0])
         if true_np is not None:
-            print(f">>> 已匹配真实均值样本: gene={resolved_genes[0]} | n={int(np.sum((processor.adata.obs['perturbation'].astype(str)==resolved_genes[0]).values))}")
+            print(f">>> Matched observed mean samples: gene={resolved_genes[0]} | n={int(np.sum((processor.adata.obs['perturbation'].astype(str)==resolved_genes[0]).values))}")
 
     os.makedirs(args.save_dir, exist_ok=True)
     prefix = "__".join(resolved_genes)
@@ -235,7 +235,7 @@ def main():
     if args.interpolate_to is not None:
         interp_gene, interp_auto = resolve_or_autopick_gene(processor, args.interpolate_to, cell_line_id)
         if interp_auto:
-            print(f">>> 提示: interpolate_to={args.interpolate_to} 不存在，自动替换为 {interp_gene}")
+            print(f">>> 提示: interpolate_to={args.interpolate_to} was not found and was automatically replaced with {interp_gene}")
         pid_to = processor.perturb_map[interp_gene]
         interp_structured = processor.encode_structured_perturbation_names([interp_gene])
         interp_structured = {k: v.to(device) for k, v in interp_structured.items()}
@@ -263,7 +263,7 @@ def main():
         traj_arr = np.stack(traj_preds, axis=0)
         traj_path = os.path.join(args.save_dir, f"{prefix}__to__{interp_gene}_trajectory.npy")
         np.save(traj_path, traj_arr)
-        print(f">>> 插值轨迹保存: {traj_path}")
+        print(f">>> Interpolation trajectory saved to: {traj_path}")
 
     top_df = df.head(20).copy()
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -300,9 +300,9 @@ def main():
     plt.savefig(fig_path, dpi=220)
     plt.close()
 
-    print(f">>> 预测 CSV: {csv_path}")
-    print(f">>> 可视化图: {fig_path}")
-    print(f">>> latent 保存: {latent_path}")
+    print(f">>> Prediction CSV: {csv_path}")
+    print(f">>> Visualization figure: {fig_path}")
+    print(f">>> Latent representation saved to: {latent_path}")
 
 
 if __name__ == '__main__':
